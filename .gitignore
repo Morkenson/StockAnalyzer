@@ -4,17 +4,15 @@
 /dist
 /tmp
 /out-tsc
-/bazel-out
+*.js.map
 
 # Node
 /node_modules
 npm-debug.log
-yarn.error
-yarn.lock
-package-lock.json
+yarn-error.log
 
 # IDEs and editors
-.idea/
+/.idea
 .project
 .classpath
 .c9/
@@ -28,18 +26,58 @@ package-lock.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-.history/*
 
-# Miscellaneous
-/.angular/cache
-.sass-cache/
-/connect.lock
-/coverage
-/libpeerconnection.log
-testem.log
-/typings
+# Visual Studio
+.vs/
 
-# System files
-.DS_Store
-Thumbs.db
+# Angular
+.angular/
 
+# Environment
+src/environments/environment.prod.ts
+
+# .NET
+StockAnalyzer.Api/bin/
+StockAnalyzer.Api/obj/
+StockAnalyzer.Api/*.user
+StockAnalyzer.Api/*.suo
+StockAnalyzer.Api/*.userosscache
+StockAnalyzer.Api/*.sln.docstates
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Rider
+.idea/
+*.sln.iml

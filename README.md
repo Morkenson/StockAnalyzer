@@ -1,204 +1,135 @@
-# Stock Analyzer
+# StockAnalyzer
 
-A comprehensive stock analysis application built with Angular, similar to Quandl or other stock analysis platforms. This template provides a solid foundation for building a stock market analysis tool with search, watchlist, charts, and detailed stock metrics.
-
-## Features
-
-- 🔍 **Stock Search**: Search for stocks by symbol or company name with real-time search results
-- 📊 **Stock Details**: View comprehensive stock information including:
-  - Real-time price and price changes
-  - Key metrics (Market Cap, P/E Ratio, Dividend Yield, etc.)
-  - Financial metrics (EPS, Beta, Revenue, Profit Margin, etc.)
-  - Interactive price charts with historical data
-- ⭐ **Watchlist**: Add stocks to your personal watchlist (stored in localStorage)
-- 📈 **Dashboard**: View popular stocks and your watchlist at a glance
-- 📱 **Responsive Design**: Modern, mobile-friendly UI
+A comprehensive stock analysis tool built with Angular frontend and .NET backend, integrated with SnapTrade for brokerage account management.
 
 ## Project Structure
 
 ```
-src/
-├── app/
-│   ├── components/
-│   │   ├── dashboard/          # Main dashboard page
-│   │   ├── stock-search/       # Stock search functionality
-│   │   ├── stock-details/      # Individual stock detail page
-│   │   ├── watchlist/          # User watchlist page
-│   │   └── shared/             # Reusable components
-│   │       ├── header/         # Navigation header
-│   │       ├── stock-card/     # Stock card component
-│   │       └── stock-chart/    # Chart component
-│   ├── models/
-│   │   └── stock.model.ts      # TypeScript interfaces for stock data
-│   ├── services/
-│   │   ├── stock.service.ts    # API service for stock data
-│   │   └── watchlist.service.ts # Watchlist management service
-│   ├── app.module.ts           # Root Angular module
-│   ├── app-routing.module.ts   # Application routing
-│   └── app.component.ts        # Root component
-├── styles.scss                 # Global styles
-├── index.html                  # HTML entry point
-└── main.ts                     # Application bootstrap
+StockAnalyzer/
+├── src/                          # Angular frontend
+│   ├── app/
+│   │   ├── components/          # Angular components
+│   │   ├── services/            # Angular services
+│   │   └── models/              # TypeScript models
+│   └── environments/            # Environment configuration
+│
+└── StockAnalyzer.Api/           # .NET backend
+    ├── Controllers/             # API controllers
+    ├── Services/                # Business logic services
+    ├── Models/                  # C# models
+    └── Data/                    # Database context (if using EF Core)
 ```
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+- Node.js (v18 or higher)
+- .NET 8.0 SDK
+- Angular CLI (v17)
+- SQL Server (optional, for database storage)
 
-- Node.js (v16 or higher)
-- npm or yarn
-- Angular CLI (v17 or higher)
+## Setup Instructions
 
-### Installation
+### Backend (.NET)
 
-1. **Install dependencies:**
+1. Navigate to the backend directory:
+   ```bash
+   cd StockAnalyzer.Api
+   ```
+
+2. Restore packages:
+   ```bash
+   dotnet restore
+   ```
+
+3. Update `appsettings.json` with your SnapTrade credentials:
+   ```json
+   {
+     "SnapTrade": {
+       "ClientId": "YOUR_CLIENT_ID",
+       "ClientSecret": "YOUR_CLIENT_SECRET",
+       "ConsumerKey": "YOUR_CONSUMER_KEY",
+       "ApiUrl": "https://api.snaptrade.com/api/v1"
+     }
+   }
+   ```
+
+4. Run the backend:
+   ```bash
+   dotnet run
+   ```
+   
+   The API will be available at `https://localhost:5001` (or `http://localhost:5000`)
+
+### Frontend (Angular)
+
+1. Navigate to the project root:
+   ```bash
+   cd StockAnalyzer
+   ```
+
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-2. **Configure API Service:**
-   - Open `src/app/services/stock.service.ts`
-   - Replace `apiUrl` with your actual stock API endpoint
-   - Add your API key to the `apiKey` property
+3. Update `src/environments/environment.ts` with your backend URL:
+   ```typescript
+   api: {
+     baseUrl: 'https://localhost:5001/api', // Match your backend URL
+   }
+   ```
+
+4. Run the frontend:
+   ```bash
+   npm start
+   ```
    
-   Popular stock API options:
-   - **Alpha Vantage**: https://www.alphavantage.co/
-   - **Yahoo Finance API**: Various free options available
-   - **Polygon.io**: https://polygon.io/
-   - **Finnhub**: https://finnhub.io/
-   - **IEX Cloud**: https://iexcloud.io/
+   The app will be available at `http://localhost:4200`
 
-3. **Update API Methods:**
-   The service currently includes mock data methods for development. Replace the mock implementations in `stock.service.ts` with actual API calls based on your chosen provider.
+## Architecture
 
-   Key methods to implement:
-   - `searchStocks()` - Search for stocks
-   - `getStockDetails()` - Get detailed stock information
-   - `getStockQuote()` - Get real-time stock quotes
-   - `getHistoricalData()` - Get historical price data
-   - `getStockMetrics()` - Get financial metrics
-   - `getMultipleQuotes()` - Batch quote requests
+### Frontend → Backend → SnapTrade API
 
-### Running the Application
+- **Angular Frontend**: Handles UI and user interactions
+- **.NET Backend**: Manages API calls, authentication, and secure storage of user secrets
+- **SnapTrade API**: Provides brokerage account integration
 
-```bash
-# Development server
-npm start
-# or
-ng serve
+### Security Features
 
-# Navigate to http://localhost:4200
-```
-
-### Building for Production
-
-```bash
-npm run build
-# or
-ng build --configuration production
-```
-
-## API Integration Guide
-
-### Example: Alpha Vantage Integration
-
-```typescript
-// In stock.service.ts
-searchStocks(query: string): Observable<StockSearchResult[]> {
-  const params = new HttpParams()
-    .set('function', 'SYMBOL_SEARCH')
-    .set('keywords', query)
-    .set('apikey', this.apiKey);
-
-  return this.http.get<any>(`${this.apiUrl}/query`, { params })
-    .pipe(
-      map(response => response.bestMatches.map((match: any) => ({
-        symbol: match['1. symbol'],
-        name: match['2. name'],
-        exchange: match['4. region'],
-        type: match['3. type']
-      }))),
-      catchError(error => {
-        console.error('Error searching stocks:', error);
-        return of([]);
-      })
-    );
-}
-```
-
-### Example: Finnhub Integration
-
-```typescript
-getStockQuote(symbol: string): Observable<StockQuote> {
-  return this.http.get<any>(`${this.apiUrl}/quote?symbol=${symbol}&token=${this.apiKey}`)
-    .pipe(
-      map(response => ({
-        symbol: symbol,
-        price: response.c,
-        change: response.d,
-        changePercent: response.dp,
-        volume: response.v,
-        timestamp: new Date(response.t * 1000)
-      })),
-      catchError(error => {
-        console.error('Error fetching quote:', error);
-        return of(this.getMockQuote(symbol));
-      })
-    );
-}
-```
-
-## Customization
-
-### Adding New Features
-
-1. **New Components**: Create components in `src/app/components/`
-2. **New Services**: Add services in `src/app/services/`
-3. **New Routes**: Add routes in `src/app/app-routing.module.ts`
-4. **Styling**: Modify `src/styles.scss` or component-specific styles
-
-### Styling
-
-The application uses SCSS with a modern, responsive design. Key styling is in:
-- `src/styles.scss` - Global styles
-- Component-specific styles in each component's `styles` array
-
-### Data Models
-
-Stock data models are defined in `src/app/models/stock.model.ts`. Extend these interfaces to match your API's response structure.
-
-## Features to Implement
-
-- [ ] Real-time price updates (WebSocket integration)
-- [ ] News feed for stocks
-- [ ] Technical indicators (RSI, MACD, etc.)
-- [ ] Portfolio tracking
-- [ ] Alerts and notifications
-- [ ] Export data to CSV/Excel
-- [ ] Comparison charts (multiple stocks)
-- [ ] Market indices overview
-- [ ] User authentication
-- [ ] Backend integration for persistent watchlists
-
-## Dependencies
-
-- **Angular 17**: Frontend framework
-- **RxJS**: Reactive programming
-- **Chart.js / ng2-charts**: Charting library
-- **date-fns**: Date manipulation utilities
+- User secrets stored securely on the backend (not exposed to frontend)
+- API keys and credentials managed by backend only
+- CORS configured for Angular frontend
+- Authentication ready (JWT tokens can be added)
 
 ## Development Notes
 
-- The application uses mock data by default. Replace mock implementations with actual API calls.
-- Watchlist is stored in browser localStorage (no backend required).
-- All API calls include error handling with fallback to mock data.
-- Components are structured for easy testing and maintenance.
+### Current Implementation Status
+
+- ✅ Backend API structure created
+- ✅ Angular service updated to call backend
+- ✅ Portfolio component updated
+- ⚠️ User authentication placeholder (using header `X-User-Id`)
+- ⚠️ User secrets stored in-memory (need database implementation)
+
+### Next Steps
+
+1. **Implement Authentication**: Add JWT authentication or Identity
+2. **Database Storage**: Replace in-memory UserService with database storage
+3. **Error Handling**: Enhance error handling and user feedback
+4. **Testing**: Add unit and integration tests
+
+## API Endpoints
+
+### SnapTrade Controller (`/api/snaptrade`)
+
+- `POST /api/snaptrade/user` - Create/get SnapTrade user
+- `POST /api/snaptrade/connect/initiate` - Initiate brokerage connection
+- `GET /api/snaptrade/portfolio` - Get user portfolio
+- `GET /api/snaptrade/accounts` - Get user accounts
+- `GET /api/snaptrade/accounts/{accountId}/holdings` - Get account holdings
+- `GET /api/snaptrade/brokerages` - Get available brokerages
+- `GET /api/snaptrade/callback` - OAuth callback handler
 
 ## License
 
-This project is a template for building stock analysis applications. Customize and extend as needed for your requirements.
-
-## Contributing
-
-This is a template project. Feel free to fork and customize for your needs!
-
+MIT

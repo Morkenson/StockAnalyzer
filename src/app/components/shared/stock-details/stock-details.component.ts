@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { StockService } from '../../services/stock.service';
-import { WatchlistService } from '../../services/watchlist.service';
-import { Stock, StockHistoricalData, StockMetrics } from '../../models/stock.model';
+import { StockService } from '../../../services/stock.service';
+import { WatchlistService } from '../../../services/watchlist.service';
+import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.model';
 
 @Component({
   selector: 'app-stock-details',

@@ -1,9 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
-import { StockService } from '../../services/stock.service';
-import { WatchlistService } from '../../services/watchlist.service';
-import { StockSearchResult } from '../../models/stock.model';
+import { StockService } from '../services/stock.service';
+import { WatchlistService } from '../services/watchlist.service';
+import { StockSearchResult } from '../models/stock.model';
 import { Router } from '@angular/router';
 
 @Component({
