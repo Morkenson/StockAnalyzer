@@ -4,11 +4,22 @@ import { Component } from '@angular/core';
   selector: 'app-root',
   template: `
     <app-header></app-header>
-    <main class="container" style="padding: 2rem 20px;">
+    <main class="container main-content">
       <router-outlet></router-outlet>
     </main>
   `,
-  styles: []
+  styles: [`
+    .main-content {
+      padding: var(--spacing-xl) var(--spacing-lg);
+      min-height: calc(100vh - 80px);
+    }
+
+    @media (max-width: 768px) {
+      .main-content {
+        padding: var(--spacing-lg) var(--spacing-md);
+      }
+    }
+  `]
 })
 export class AppComponent {
   title = 'Stock Analyzer';

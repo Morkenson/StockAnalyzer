@@ -50,8 +50,10 @@ import { Router } from '@angular/router';
 
       <!-- Loading State -->
       <div class="card" *ngIf="loading && !portfolio">
-        <div class="spinner"></div>
-        <p style="text-align: center; margin-top: 1rem;">Loading portfolio...</p>
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading portfolio...</p>
+        </div>
       </div>
 
       <!-- Error State -->
@@ -100,7 +102,7 @@ import { Router } from '@angular/router';
               <p>No holdings in this account.</p>
             </div>
 
-            <div *ngIf="account.holdings && account.holdings.length > 0">
+            <div *ngIf="account.holdings && account.holdings.length > 0" class="table-wrapper">
               <table class="table holdings-table">
                 <thead>
                   <tr>
@@ -117,10 +119,12 @@ import { Router } from '@angular/router';
                 <tbody>
                   <tr *ngFor="let holding of account.holdings">
                     <td>
-                      <strong (click)="viewStock(holding.symbol)" 
-                              style="cursor: pointer; color: #667eea;">
-                        {{ holding.symbol }}
-                      </strong>
+                      <button 
+                        class="symbol-link"
+                        (click)="viewStock(holding.symbol)"
+                        [attr.aria-label]="'View details for ' + holding.symbol">
+                        <strong>{{ holding.symbol }}</strong>
+                      </button>
                     </td>
                     <td>{{ holding.quantity | number:'1.0-2' }}</td>
                     <td>{{ holding.currency }}{{ holding.averagePurchasePrice | number:'1.2-2' }}</td>
@@ -160,105 +164,126 @@ import { Router } from '@angular/router';
     </div>
   `,
   styles: [`
-    .portfolio h1 {
-      margin-bottom: 2rem;
-      color: #333;
+    .portfolio {
+      padding: var(--spacing-xl) 0;
     }
 
     .portfolio-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
+      align-items: flex-start;
+      margin-bottom: var(--spacing-2xl);
+      gap: var(--spacing-lg);
+    }
+
+    .portfolio-header h1 {
+      margin-bottom: 0;
     }
 
     .header-actions {
       display: flex;
-      gap: 1rem;
-    }
-
-    .btn-secondary {
-      background-color: #6c757d;
-      color: white;
-      border: none;
-      padding: 0.75rem 1.5rem;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 1rem;
-      transition: background-color 0.2s;
-    }
-
-    .btn-secondary:hover:not(:disabled) {
-      background-color: #5a6268;
-    }
-
-    .btn-secondary:disabled {
-      background-color: #ccc;
-      cursor: not-allowed;
+      gap: var(--spacing-md);
+      flex-wrap: wrap;
     }
 
     .portfolio-summary {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1.5rem;
-      margin-top: 1rem;
+      gap: var(--spacing-lg);
+      margin-top: var(--spacing-md);
     }
 
     .summary-item {
       text-align: center;
+      padding: var(--spacing-lg);
+      background-color: var(--color-bg-tertiary);
+      border-radius: var(--radius-md);
+      transition: transform var(--transition-base);
+    }
+
+    .summary-item:hover {
+      transform: translateY(-2px);
     }
 
     .summary-item label {
       display: block;
-      font-size: 0.9rem;
-      color: #666;
-      margin-bottom: 0.5rem;
-      font-weight: 500;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--spacing-sm);
+      font-weight: var(--font-weight-medium);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
 
     .summary-item .value {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #333;
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text-primary);
+      letter-spacing: -0.02em;
     }
 
     .summary-item .value.positive {
-      color: #28a745;
+      color: var(--color-success);
     }
 
     .summary-item .value.negative {
-      color: #dc3545;
+      color: var(--color-danger);
     }
 
     .account-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem;
+      padding: var(--spacing-lg);
       cursor: pointer;
-      transition: background-color 0.2s;
-      border-radius: 4px;
+      transition: all var(--transition-base);
+      border-radius: var(--radius-md);
+      user-select: none;
     }
 
     .account-header:hover {
-      background-color: #f8f9fa;
+      background-color: var(--color-bg-tertiary);
+    }
+
+    .account-header:active {
+      transform: scale(0.98);
+    }
+
+    .account-info {
+      flex: 1;
     }
 
     .account-info h3 {
-      margin: 0 0 0.25rem 0;
-      color: #333;
+      margin: 0 0 var(--spacing-xs) 0;
+      color: var(--color-text-primary);
+      font-size: var(--font-size-xl);
     }
 
     .account-meta {
       margin: 0;
-      font-size: 0.9rem;
-      color: #666;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      align-items: center;
+    }
+
+    .account-actions {
+      display: flex;
+      align-items: center;
     }
 
     .expand-icon {
-      font-size: 0.8rem;
-      transition: transform 0.3s;
-      color: #667eea;
+      font-size: var(--font-size-sm);
+      transition: transform var(--transition-base);
+      color: var(--color-primary);
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .expand-icon.expanded {
@@ -266,104 +291,194 @@ import { Router } from '@angular/router';
     }
 
     .account-holdings {
-      padding: 1rem;
-      border-top: 1px solid #eee;
-      margin-top: 0.5rem;
+      padding: var(--spacing-lg);
+      border-top: 1px solid var(--color-border-light);
+      margin-top: var(--spacing-md);
+      animation: slideDown var(--transition-slow) ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
     }
 
     .holdings-table {
       width: 100%;
-      margin-top: 1rem;
+      margin-top: var(--spacing-md);
     }
 
     .holdings-table th {
-      background-color: #f8f9fa;
-      font-weight: 600;
-      padding: 0.75rem;
+      background-color: var(--color-bg-tertiary);
+      font-weight: var(--font-weight-semibold);
+      padding: var(--spacing-md);
       text-align: left;
-      border-bottom: 2px solid #dee2e6;
+      border-bottom: 2px solid var(--color-border);
     }
 
     .holdings-table td {
-      padding: 0.75rem;
-      border-bottom: 1px solid #eee;
+      padding: var(--spacing-md);
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .holdings-table tbody tr {
+      transition: background-color var(--transition-fast);
     }
 
     .holdings-table tbody tr:hover {
-      background-color: #f8f9fa;
+      background-color: var(--color-bg-tertiary);
+    }
+
+    .holdings-table tbody tr td strong {
+      color: var(--color-primary);
+      font-weight: var(--font-weight-semibold);
+      cursor: pointer;
+      transition: color var(--transition-base);
+    }
+
+    .holdings-table tbody tr td strong:hover {
+      color: var(--color-primary-dark);
+      text-decoration: underline;
     }
 
     .account-total {
-      background-color: #f8f9fa;
-      font-weight: 600;
+      background-color: var(--color-bg-tertiary);
+      font-weight: var(--font-weight-semibold);
     }
 
     .account-total td {
-      padding: 1rem 0.75rem;
-      border-top: 2px solid #dee2e6;
+      padding: var(--spacing-lg) var(--spacing-md);
+      border-top: 2px solid var(--color-border);
     }
 
     .no-holdings {
       text-align: center;
-      padding: 2rem;
-      color: #666;
+      padding: var(--spacing-2xl);
+      color: var(--color-text-secondary);
     }
 
     .empty-state {
       text-align: center;
-      padding: 3rem;
-      color: #666;
+      padding: var(--spacing-3xl) var(--spacing-xl);
+      color: var(--color-text-secondary);
     }
 
     .empty-state h3 {
-      margin-bottom: 1rem;
-      color: #333;
+      margin-bottom: var(--spacing-md);
+      color: var(--color-text-primary);
     }
 
     .empty-state p {
-      margin-bottom: 1.5rem;
+      margin-bottom: var(--spacing-lg);
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     .error-message {
       text-align: center;
-      padding: 2rem;
+      padding: var(--spacing-xl);
     }
 
     .error-message h3 {
-      color: #dc3545;
-      margin-bottom: 1rem;
+      color: var(--color-danger);
+      margin-bottom: var(--spacing-md);
     }
 
     .error-message p {
-      color: #666;
-      margin-bottom: 1.5rem;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--spacing-lg);
     }
 
-    .btn-sm {
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: var(--spacing-2xl) 0;
+    }
+
+    .loading-state p {
+      color: var(--color-text-secondary);
+      margin: 0;
+    }
+
+    .symbol-link {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+    }
+
+    .symbol-link:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+      border-radius: var(--radius-sm);
     }
 
     .positive {
-      color: #28a745;
+      color: var(--color-success);
+      font-weight: var(--font-weight-medium);
     }
 
     .negative {
-      color: #dc3545;
+      color: var(--color-danger);
+      font-weight: var(--font-weight-medium);
     }
 
     @media (max-width: 768px) {
+      .portfolio {
+        padding: var(--spacing-lg) 0;
+      }
+
+      .portfolio-header {
+        flex-direction: column;
+        margin-bottom: var(--spacing-xl);
+      }
+
+      .header-actions {
+        width: 100%;
+      }
+
+      .header-actions .btn {
+        flex: 1;
+      }
+
       .portfolio-summary {
         grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-md);
+      }
+
+      .summary-item {
+        padding: var(--spacing-md);
+      }
+
+      .summary-item .value {
+        font-size: var(--font-size-xl);
       }
 
       .holdings-table {
-        font-size: 0.85rem;
+        font-size: var(--font-size-xs);
       }
 
       .holdings-table th,
       .holdings-table td {
-        padding: 0.5rem;
+        padding: var(--spacing-sm);
+      }
+
+      .account-header {
+        padding: var(--spacing-md);
       }
     }
   `]

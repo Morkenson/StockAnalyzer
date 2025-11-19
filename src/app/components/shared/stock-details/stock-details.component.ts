@@ -10,21 +10,22 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
     <div class="stock-details" *ngIf="stock">
       <div class="card">
         <div class="stock-header">
-          <div>
+          <div class="stock-info">
             <h1>{{ stock.symbol }}</h1>
             <p class="stock-name">{{ stock.name }}</p>
-            <p class="stock-exchange">{{ stock.exchange }}</p>
+            <span class="stock-exchange">{{ stock.exchange }}</span>
           </div>
           <div class="stock-price-section">
             <div class="stock-price" [class.positive]="stock.change && stock.change >= 0" 
                  [class.negative]="stock.change && stock.change < 0">
               {{ '$' + (stock.currentPrice | number:'1.2-2') }}
             </div>
-            <div *ngIf="stock.change !== undefined" class="stock-change" 
+            <div *ngIf="stock.change !== undefined && stock.changePercent !== undefined" class="stock-change" 
                  [class.positive]="stock.change >= 0" 
                  [class.negative]="stock.change < 0">
-              {{ stock.change >= 0 ? '+' : '' }}{{ stock.change | number:'1.2-2' }} 
-              ({{ stock.changePercent | number:'1.2-2' }}%)
+              <span class="change-arrow">{{ stock.change >= 0 ? '↑' : '↓' }}</span>
+              <span>{{ stock.change >= 0 ? '+' : '' }}{{ stock.change | number:'1.2-2' }}</span>
+              <span>({{ stock.changePercent >= 0 ? '+' : '' }}{{ stock.changePercent | number:'1.2-2' }}%)</span>
             </div>
           </div>
         </div>
@@ -119,63 +120,154 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
     </div>
 
     <div *ngIf="loading" class="card">
-      <div class="spinner"></div>
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading stock data...</p>
+      </div>
     </div>
 
     <div *ngIf="error" class="card">
-      <div class="error-message">{{ error }}</div>
+      <div class="error-message">
+        <h3>Error Loading Stock</h3>
+        <p>{{ error }}</p>
+        <button class="btn btn-primary" (click)="loadStockData()">Retry</button>
+      </div>
     </div>
   `,
   styles: [`
+    .stock-details {
+      padding: var(--spacing-xl) 0;
+    }
+
     .stock-details h1 {
-      margin-bottom: 0.5rem;
-      color: #333;
+      margin-bottom: var(--spacing-sm);
+      color: var(--color-text-primary);
     }
 
     .stock-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 1.5rem;
+      margin-bottom: var(--spacing-xl);
+      gap: var(--spacing-lg);
+      flex-wrap: wrap;
+    }
+
+    .stock-info {
+      flex: 1;
     }
 
     .stock-name {
-      font-size: 1.1rem;
-      color: #666;
-      margin: 0.25rem 0;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+      margin: var(--spacing-xs) 0;
+      font-weight: var(--font-weight-medium);
     }
 
     .stock-exchange {
-      font-size: 0.9rem;
-      color: #999;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
       margin: 0;
+      display: inline-block;
+      padding: var(--spacing-xs) var(--spacing-sm);
+      background-color: var(--color-bg-tertiary);
+      border-radius: var(--radius-sm);
     }
 
     .stock-price-section {
       text-align: right;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+      align-items: flex-end;
+    }
+
+    .stock-change {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+    }
+
+    .change-arrow {
+      font-size: var(--font-size-lg);
     }
 
     .stock-actions {
-      margin-top: 1rem;
+      margin-top: var(--spacing-lg);
+      display: flex;
+      gap: var(--spacing-md);
     }
 
     .metrics-table {
       width: 100%;
     }
 
+    .metrics-table tr {
+      transition: background-color var(--transition-fast);
+    }
+
+    .metrics-table tr:hover {
+      background-color: var(--color-bg-tertiary);
+    }
+
     .metrics-table td {
-      padding: 0.75rem 0;
-      border-bottom: 1px solid #eee;
+      padding: var(--spacing-md) 0;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .metrics-table tr:last-child td {
+      border-bottom: none;
     }
 
     .metrics-table td:first-child {
-      font-weight: 500;
-      color: #666;
+      font-weight: var(--font-weight-medium);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
     }
 
     .metrics-table td:last-child {
       text-align: right;
-      font-weight: 600;
+      font-weight: var(--font-weight-semibold);
+      color: var(--color-text-primary);
+    }
+
+    @media (max-width: 768px) {
+      .stock-details {
+        padding: var(--spacing-lg) 0;
+      }
+
+      .stock-header {
+        flex-direction: column;
+        margin-bottom: var(--spacing-lg);
+      }
+
+      .stock-price-section {
+        text-align: left;
+        width: 100%;
+      }
+
+      .stock-actions {
+        flex-direction: column;
+      }
+
+      .stock-actions .btn {
+        width: 100%;
+      }
+    }
+
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: var(--spacing-2xl) 0;
+    }
+
+    .loading-state p {
+      color: var(--color-text-secondary);
+      margin: 0;
     }
   `]
 })
@@ -202,7 +294,7 @@ export class StockDetailsComponent implements OnInit {
     });
   }
 
-  private loadStockData(): void {
+  loadStockData(): void {
     this.loading = true;
     this.error = null;
 
