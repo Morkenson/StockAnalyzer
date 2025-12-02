@@ -51,10 +51,11 @@ pnpm-lock.yaml
 *.spec.ts
 *.spec.js
 
-# Angular environment files (keep structure, ignore content)
-# Note: environment.prod.ts should be committed (contains Railway URL, no secrets)
-/frontend/src/environments/environment.ts
+# Angular environment files
+# Note: Both environment.ts and environment.prod.ts should be committed
+# They only contain URLs (localhost/production), no API keys or secrets
 /frontend/src/environments/environment.*.ts
+!frontend/src/environments/environment.ts
 !frontend/src/environments/environment.prod.ts
 !frontend/src/environments/environment.example.ts
 
