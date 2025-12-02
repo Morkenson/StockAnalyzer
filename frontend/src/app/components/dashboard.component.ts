@@ -3,6 +3,7 @@ import { StockService } from '../services/stock.service';
 import { WatchlistService } from '../services/watchlist.service';
 import { StockQuote } from '../models/stock.model';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Component({
   selector: 'app-dashboard',
@@ -13,20 +14,20 @@ import { Observable } from 'rxjs';
         <p class="dashboard-subtitle">Track your favorite stocks and monitor market trends</p>
       </div>
       
-      <div class="card" *ngIf="popularStocks$ | async as stocks">
+      <div class="card" *ngIf="marketIndexes$ | async as indexes">
         <div class="card-header">
-          <span>Popular Stocks</span>
-          <span class="card-badge">{{ stocks.length }}</span>
+          <span>Market Indexes</span>
+          <span class="card-badge">{{ indexes.length }}</span>
         </div>
-        <div class="grid grid-3" *ngIf="stocks.length > 0">
+        <div class="grid grid-3" *ngIf="indexes.length > 0">
           <app-stock-card 
-            *ngFor="let stock of stocks" 
-            [stock]="stock"
+            *ngFor="let index of indexes" 
+            [stock]="index"
             [showAddToWatchlist]="true">
           </app-stock-card>
         </div>
-        <div *ngIf="stocks.length === 0" class="empty-state">
-          <p>No popular stocks available at the moment.</p>
+        <div *ngIf="indexes.length === 0" class="empty-state">
+          <p>Market indexes data is loading...</p>
         </div>
       </div>
 
@@ -156,11 +157,11 @@ import { Observable } from 'rxjs';
   `]
 })
 export class DashboardComponent implements OnInit {
-  popularStocks$!: Observable<StockQuote[]>;
+  marketIndexes$!: Observable<StockQuote[]>;
   watchlistQuotes$!: Observable<StockQuote[]>;
 
-  // Popular stocks to display
-  private popularSymbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META'];
+  // Market indexes to display: S&P 500 (SPY), QQQ (Nasdaq 100), Bitcoin (BTC/USD)
+  private marketIndexSymbols = ['SPY', 'QQQ', 'BTC/USD'];
 
   constructor(
     private stockService: StockService,
@@ -168,16 +169,15 @@ export class DashboardComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // Load popular stocks
-    this.loadPopularStocks();
+    // Load market indexes
+    this.loadMarketIndexes();
     
     // Load watchlist stocks
     this.loadWatchlistStocks();
   }
 
-  private loadPopularStocks(): void {
-    // TODO: Implement actual API call
-    this.popularStocks$ = this.stockService.getMultipleQuotes(this.popularSymbols);
+  private loadMarketIndexes(): void {
+    this.marketIndexes$ = this.stockService.getMultipleQuotes(this.marketIndexSymbols);
   }
 
   private loadWatchlistStocks(): void {

@@ -48,13 +48,8 @@ export interface StockMetrics {
   symbol: string;
   marketCap: number;
   peRatio: number;
-  eps: number;
   dividendYield: number;
-  beta: number;
-  revenue: number;
-  profitMargin: number;
-  roe: number;
-  debtToEquity: number;
+  // Removed: eps, beta, revenue, profitMargin, roe, debtToEquity (not available in Twelve Data free plan)
 }
 
 export interface WatchlistItem {

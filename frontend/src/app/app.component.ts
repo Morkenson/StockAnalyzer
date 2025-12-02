@@ -22,6 +22,6 @@ import { Component } from '@angular/core';
   `]
 })
 export class AppComponent {
-  title = 'Stock Analyzer';
+  title = 'Midnight Wealth';
 }
 

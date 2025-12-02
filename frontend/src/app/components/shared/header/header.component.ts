@@ -8,8 +8,8 @@ import { Router } from '@angular/router';
     <header class="header">
       <div class="container">
         <div class="header-content">
-          <a routerLink="/dashboard" class="logo" aria-label="Stock Analyzer Home">
-            <span class="logo-text">Stock Analyzer</span>
+          <a routerLink="/dashboard" class="logo" aria-label="Midnight Wealth Home">
+            <span class="logo-text">Midnight Wealth</span>
           </a>
           
           <div class="header-search">

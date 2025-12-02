@@ -6,18 +6,23 @@ A comprehensive stock analysis tool built with Angular frontend and .NET backend
 
 ```
 StockAnalyzer/
-├── src/                          # Angular frontend
-│   ├── app/
-│   │   ├── components/          # Angular components
-│   │   ├── services/            # Angular services
-│   │   └── models/              # TypeScript models
-│   └── environments/            # Environment configuration
+├── frontend/                     # Angular frontend
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── components/      # Angular components
+│   │   │   ├── services/        # Angular services
+│   │   │   └── models/          # TypeScript models
+│   │   └── environments/        # Environment configuration
+│   ├── angular.json
+│   ├── package.json
+│   └── tsconfig.json
 │
-└── StockAnalyzer.Api/           # .NET backend
-    ├── Controllers/             # API controllers
-    ├── Services/                # Business logic services
-    ├── Models/                  # C# models
-    └── Data/                    # Database context (if using EF Core)
+└── backend/                      # .NET backend
+    └── StockAnalyzer.Api/
+        ├── Controllers/          # API controllers
+        ├── Services/            # Business logic services
+        ├── Models/              # C# models
+        └── Data/                # Database context (if using EF Core)
 ```
 
 ## Prerequisites
@@ -33,7 +38,7 @@ StockAnalyzer/
 
 1. Navigate to the backend directory:
    ```bash
-   cd StockAnalyzer.Api
+   cd backend/StockAnalyzer.Api
    ```
 
 2. Restore packages:
@@ -62,9 +67,9 @@ StockAnalyzer/
 
 ### Frontend (Angular)
 
-1. Navigate to the project root:
+1. Navigate to the frontend directory:
    ```bash
-   cd StockAnalyzer
+   cd frontend
    ```
 
 2. Install dependencies:

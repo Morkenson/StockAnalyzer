@@ -1,10 +1,28 @@
 using StockAnalyzer.Api.Services;
-using StockAnalyzer.Api.Data;
+using DotNetEnv;
+
+// Load .env file from project root (one level up from backend/StockAnalyzer.Api)
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", ".env");
+if (File.Exists(envPath))
+{
+    Env.Load(envPath);
+}
+else
+{
+    // Also try loading from current directory
+    Env.Load();
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddApplicationPart(typeof(Program).Assembly) // Ensure all controllers are discovered
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serialization to use camelCase for property names
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -29,8 +47,11 @@ builder.Services.AddHttpClient<ISnapTradeService, SnapTradeService>(client =>
     client.DefaultRequestHeaders.Add("X-Consumer-Key", builder.Configuration["SnapTrade:ConsumerKey"] ?? "");
 });
 
-// Register services
-builder.Services.AddScoped<ISnapTradeService, SnapTradeService>();
+// Register HttpClient for Twelve Data API calls
+// AddHttpClient automatically registers the service, so no need for duplicate registration
+builder.Services.AddHttpClient<IStockDataService, StockDataService>();
+
+// Register other services
 builder.Services.AddScoped<IUserService, UserService>();
 
 // Database context (if using Entity Framework)
@@ -46,7 +67,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Only use HTTPS redirection in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("AllowAngular");
 

@@ -30,6 +30,10 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
           </div>
         </div>
 
+        <div class="stock-chart-section">
+          <app-stock-chart [historicalData]="historicalData"></app-stock-chart>
+        </div>
+
         <div class="stock-actions">
           <button 
             *ngIf="!isInWatchlist"
@@ -46,9 +50,8 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
         </div>
       </div>
 
-      <div class="grid grid-2">
         <div class="card">
-          <div class="card-header">Key Metrics</div>
+        <div class="card-header">Financial Metrics</div>
           <table class="metrics-table">
             <tr *ngIf="stock.marketCap">
               <td>Market Cap</td>
@@ -74,43 +77,11 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
               <td>52 Week Low</td>
               <td>{{ '$' + (stock.low52Week | number:'1.2-2') }}</td>
             </tr>
-          </table>
-        </div>
-
-        <div class="card" *ngIf="metrics">
-          <div class="card-header">Financial Metrics</div>
-          <table class="metrics-table">
-            <tr *ngIf="metrics.eps">
-              <td>EPS</td>
-              <td>{{ '$' + (metrics.eps | number:'1.2-2') }}</td>
-            </tr>
-            <tr *ngIf="metrics.beta">
-              <td>Beta</td>
-              <td>{{ metrics.beta | number:'1.2-2' }}</td>
-            </tr>
-            <tr *ngIf="metrics.revenue">
-              <td>Revenue</td>
-              <td>{{ '$' + (metrics.revenue | number) }}</td>
-            </tr>
-            <tr *ngIf="metrics.profitMargin">
-              <td>Profit Margin</td>
-              <td>{{ metrics.profitMargin | number:'1.2-2' }}%</td>
-            </tr>
-            <tr *ngIf="metrics.roe">
-              <td>ROE</td>
-              <td>{{ metrics.roe | number:'1.2-2' }}%</td>
-            </tr>
-            <tr *ngIf="metrics.debtToEquity">
-              <td>Debt to Equity</td>
-              <td>{{ metrics.debtToEquity | number:'1.2-2' }}</td>
+          <tr *ngIf="stock.averageVolume">
+            <td>Average Volume</td>
+            <td>{{ stock.averageVolume | number }}</td>
             </tr>
           </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">Price Chart</div>
-        <app-stock-chart [historicalData]="historicalData"></app-stock-chart>
       </div>
 
       <div class="card" *ngIf="stock.description">
@@ -148,13 +119,20 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: var(--spacing-xl);
+      margin-bottom: var(--spacing-lg);
       gap: var(--spacing-lg);
       flex-wrap: wrap;
     }
 
     .stock-info {
       flex: 1;
+      min-width: 200px;
+    }
+
+    .stock-chart-section {
+      margin: var(--spacing-lg) 0;
+      border-top: 1px solid var(--color-border-light);
+      padding-top: var(--spacing-lg);
     }
 
     .stock-name {
@@ -240,7 +218,7 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
 
       .stock-header {
         flex-direction: column;
-        margin-bottom: var(--spacing-lg);
+        margin-bottom: var(--spacing-md);
       }
 
       .stock-price-section {
@@ -248,8 +226,14 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
         width: 100%;
       }
 
+      .stock-chart-section {
+        margin: var(--spacing-md) 0;
+        padding-top: var(--spacing-md);
+      }
+
       .stock-actions {
         flex-direction: column;
+        margin-top: var(--spacing-md);
       }
 
       .stock-actions .btn {
