@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using StockAnalyzer.Api.Models;
-using StockAnalyzer.Api.Services;
+using StockAnalyzer.Models;
+using StockAnalyzer.Services;
 
-namespace StockAnalyzer.Api.Controllers;
+namespace StockAnalyzer.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]

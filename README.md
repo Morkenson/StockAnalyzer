@@ -18,11 +18,12 @@ StockAnalyzer/
 │   └── tsconfig.json
 │
 └── backend/                      # .NET backend
-    └── StockAnalyzer.Api/
-        ├── Controllers/          # API controllers
-        ├── Services/            # Business logic services
-        ├── Models/              # C# models
-        └── Data/                # Database context (if using EF Core)
+    ├── Controllers/              # API controllers
+    ├── Services/                # Business logic services
+    ├── Models/                  # C# models
+    ├── Properties/              # Application properties
+    ├── Program.cs               # Application entry point
+    └── StockAnalyzer.csproj     # Project file
 ```
 
 ## Prerequisites
@@ -38,7 +39,7 @@ StockAnalyzer/
 
 1. Navigate to the backend directory:
    ```bash
-   cd backend/StockAnalyzer.Api
+   cd backend
    ```
 
 2. Restore packages:

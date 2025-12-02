@@ -1,8 +1,8 @@
-using StockAnalyzer.Api.Services;
+using StockAnalyzer.Services;
 using DotNetEnv;
 
-// Load .env file from project root (one level up from backend/StockAnalyzer.Api)
-var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", ".env");
+// Load .env file from project root (one level up from backend)
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", ".env");
 if (File.Exists(envPath))
 {
     Env.Load(envPath);
@@ -54,10 +54,6 @@ builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 // Register other services
 builder.Services.AddScoped<IUserService, UserService>();
 
-// Database context (if using Entity Framework)
-// builder.Services.AddDbContext<ApplicationDbContext>(options =>
-//     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -74,9 +70,6 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAngular");
-
-app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapControllers();
 

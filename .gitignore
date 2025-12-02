@@ -6,6 +6,9 @@
 .env.local
 .env.*.local
 *.env
+# Backend configuration files (may contain secrets)
+/backend/appsettings.Development.json
+/backend/appsettings.Production.json
 appsettings.Development.json
 appsettings.Production.json
 secrets.json
@@ -108,6 +111,8 @@ project.fragment.lock.json
 artifacts/
 # Note: launchSettings.json is typically user-specific and should be ignored
 **/Properties/launchSettings.json
+# User secrets (stored outside project)
+**/secrets.json
 
 # NuGet Packages
 *.nupkg
@@ -126,6 +131,8 @@ project.nuget.cache
 /backend/**/bin/
 /backend/**/obj/
 /backend/**/out/
+# Old project structure (if still exists)
+/backend/StockAnalyzer.Api/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/

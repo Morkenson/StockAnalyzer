@@ -1,6 +1,6 @@
-using StockAnalyzer.Api.Models;
+using StockAnalyzer.Models;
 
-namespace StockAnalyzer.Api.Services;
+namespace StockAnalyzer.Services;
 
 public interface ISnapTradeService
 {

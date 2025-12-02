@@ -1,4 +1,4 @@
-namespace StockAnalyzer.Api.Services;
+namespace StockAnalyzer.Services;
 
 public class UserService : IUserService
 {

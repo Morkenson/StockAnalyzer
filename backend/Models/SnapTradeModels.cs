@@ -1,4 +1,4 @@
-namespace StockAnalyzer.Api.Models;
+namespace StockAnalyzer.Models;
 
 public class SnapTradeUser
 {

@@ -1,8 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using StockAnalyzer.Api.Models;
+using StockAnalyzer.Models;
 
-namespace StockAnalyzer.Api.Services;
+namespace StockAnalyzer.Services;
 
 public class StockDataService : IStockDataService
 {
