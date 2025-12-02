@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm install && npm run build",
-  "outputDirectory": "frontend/dist/stock-analyzer",
+  "outputDirectory": "dist/stock-analyzer",
   "framework": null,
   "installCommand": "npm install"
 }
