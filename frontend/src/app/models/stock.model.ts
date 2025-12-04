@@ -52,6 +52,15 @@ export interface StockMetrics {
   // Removed: eps, beta, revenue, profitMargin, roe, debtToEquity (not available in Twelve Data free plan)
 }
 
+export interface Watchlist {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface WatchlistItem {
   id: string;
   symbol: string;

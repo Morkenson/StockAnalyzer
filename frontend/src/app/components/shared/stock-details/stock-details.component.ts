@@ -1,8 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ElementRef, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { StockService } from '../../../services/stock.service';
 import { WatchlistService } from '../../../services/watchlist.service';
-import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.model';
+import { Stock, StockHistoricalData, StockMetrics, Watchlist } from '../../../models/stock.model';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-stock-details',
@@ -35,12 +36,32 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
         </div>
 
         <div class="stock-actions">
-          <button 
-            *ngIf="!isInWatchlist"
-            class="btn btn-primary" 
-            (click)="addToWatchlist()">
-            Add to Watchlist
-          </button>
+          <div class="watchlist-dropdown-wrapper" *ngIf="!isInWatchlist">
+            <button 
+              class="btn btn-primary" 
+              (click)="toggleWatchlistDropdown()"
+              [attr.aria-expanded]="showDropdown">
+              Add to Watchlist
+            </button>
+            <div class="watchlist-dropdown" *ngIf="showDropdown" #watchlistDropdown>
+              <div class="dropdown-header">
+                <span>Add to Watchlist</span>
+              </div>
+              <div class="dropdown-list" *ngIf="watchlists.length > 0">
+                <button 
+                  *ngFor="let wl of watchlists"
+                  class="dropdown-item"
+                  (click)="addToWatchlist(wl.id)"
+                  [attr.aria-label]="'Add ' + symbol + ' to ' + wl.name">
+                  <span>{{ wl.name }}</span>
+                  <span *ngIf="wl.isDefault" class="default-badge">Default</span>
+                </button>
+              </div>
+              <div class="dropdown-empty" *ngIf="watchlists.length === 0">
+                <p>No watchlists available</p>
+              </div>
+            </div>
+          </div>
           <button 
             *ngIf="isInWatchlist"
             class="btn btn-secondary" 
@@ -253,9 +274,93 @@ import { Stock, StockHistoricalData, StockMetrics } from '../../../models/stock.
       color: var(--color-text-secondary);
       margin: 0;
     }
+
+    .watchlist-dropdown-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .watchlist-dropdown {
+      position: absolute;
+      top: calc(100% + var(--spacing-xs));
+      left: 0;
+      min-width: 200px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      overflow: hidden;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .dropdown-header {
+      padding: var(--spacing-md);
+      background: var(--color-bg-tertiary);
+      border-bottom: 1px solid var(--color-border);
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+    }
+
+    .dropdown-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .dropdown-item {
+      width: 100%;
+      padding: var(--spacing-md);
+      background: transparent;
+      border: none;
+      color: var(--color-text-primary);
+      font-size: var(--font-size-sm);
+      text-align: left;
+      cursor: pointer;
+      transition: background-color var(--transition-base);
+      font-family: var(--font-family);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .dropdown-item:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .dropdown-item:active {
+      background: var(--color-bg-secondary);
+    }
+
+    .default-badge {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      font-weight: var(--font-weight-normal);
+    }
+
+    .dropdown-empty {
+      padding: var(--spacing-md);
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
   `]
 })
-export class StockDetailsComponent implements OnInit {
+export class StockDetailsComponent implements OnInit, OnDestroy {
+  @ViewChild('watchlistDropdown', { static: false }) watchlistDropdown?: ElementRef;
+  
   stock: Stock | null = null;
   metrics: StockMetrics | null = null;
   historicalData: StockHistoricalData[] = [];
@@ -263,19 +368,48 @@ export class StockDetailsComponent implements OnInit {
   error: string | null = null;
   isInWatchlist = false;
   symbol: string = '';
+  watchlists: Watchlist[] = [];
+  showDropdown = false;
+  private subscriptions = new Subscription();
 
   constructor(
     private route: ActivatedRoute,
     private stockService: StockService,
-    private watchlistService: WatchlistService
+    private watchlistService: WatchlistService,
+    private elementRef: ElementRef
   ) {}
 
   ngOnInit(): void {
+    // Load watchlists
+    this.subscriptions.add(
+      this.watchlistService.getWatchlists().subscribe(watchlists => {
+        this.watchlists = watchlists;
+      })
+    );
+
     this.route.params.subscribe(params => {
       this.symbol = params['symbol'];
       this.loadStockData();
       this.checkWatchlistStatus();
     });
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (this.showDropdown && this.watchlistDropdown) {
+      const clickedInside = this.elementRef.nativeElement.contains(event.target);
+      if (!clickedInside) {
+        this.showDropdown = false;
+      }
+    }
+  }
+
+  toggleWatchlistDropdown(): void {
+    this.showDropdown = !this.showDropdown;
   }
 
   loadStockData(): void {
@@ -326,14 +460,23 @@ export class StockDetailsComponent implements OnInit {
     });
   }
 
-  addToWatchlist(): void {
-    this.watchlistService.addToWatchlist(this.symbol);
-    this.isInWatchlist = true;
+  async addToWatchlist(watchlistId: string): Promise<void> {
+    try {
+      await this.watchlistService.addToWatchlist(this.symbol, undefined, watchlistId);
+      this.showDropdown = false;
+      // Watchlist status will be updated automatically via subscription
+    } catch (error) {
+      console.error('Error adding to watchlist:', error);
+    }
   }
 
-  removeFromWatchlist(): void {
-    this.watchlistService.removeFromWatchlist(this.symbol);
-    this.isInWatchlist = false;
+  async removeFromWatchlist(): Promise<void> {
+    try {
+      await this.watchlistService.removeFromWatchlist(this.symbol);
+      // Watchlist status will be updated automatically via subscription
+    } catch (error) {
+      console.error('Error removing from watchlist:', error);
+    }
   }
 }
 

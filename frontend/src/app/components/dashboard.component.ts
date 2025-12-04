@@ -16,7 +16,7 @@ import { map } from 'rxjs/operators';
       
       <div class="card" *ngIf="marketIndexes$ | async as indexes">
         <div class="card-header">
-          <span>Market Indexes</span>
+          <span>Market Overview</span>
           <span class="card-badge">{{ indexes.length }}</span>
         </div>
         <div class="grid grid-3" *ngIf="indexes.length > 0">
@@ -27,7 +27,7 @@ import { map } from 'rxjs/operators';
           </app-stock-card>
         </div>
         <div *ngIf="indexes.length === 0" class="empty-state">
-          <p>Market indexes data is loading...</p>
+          <p>Market overview data is loading...</p>
         </div>
       </div>
 
@@ -51,18 +51,11 @@ import { map } from 'rxjs/operators';
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">Market Overview</div>
-        <div class="market-overview-placeholder">
-          <p class="placeholder-text">Market overview widgets coming soon</p>
-          <p class="placeholder-subtext">Indices, trending stocks, and market insights will appear here</p>
-        </div>
-      </div>
     </div>
   `,
   styles: [`
     .dashboard {
-      padding: var(--spacing-xl) 0;
+      padding: 0 0 var(--spacing-xl) 0;
     }
 
     .dashboard-header {
@@ -124,22 +117,6 @@ import { map } from 'rxjs/operators';
       margin-right: auto;
     }
 
-    .market-overview-placeholder {
-      padding: var(--spacing-2xl);
-      text-align: center;
-    }
-
-    .placeholder-text {
-      font-size: var(--font-size-lg);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .placeholder-subtext {
-      font-size: var(--font-size-sm);
-      color: var(--color-text-tertiary);
-      margin-bottom: 0;
-    }
 
     @media (max-width: 768px) {
       .dashboard {

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Linq;
 using StockAnalyzer.Models;
 
 namespace StockAnalyzer.Services;
@@ -51,8 +52,11 @@ public class StockDataService : IStockDataService
 
             if (result.TryGetProperty("data", out var dataElement) && dataElement.ValueKind == JsonValueKind.Array)
             {
+                int count = 0;
                 foreach (var item in dataElement.EnumerateArray())
                 {
+                    if (count >= 5) break; // Limit to top 5 most likely results
+                    
                     searchResults.Add(new StockSearchResult
                     {
                         Symbol = item.TryGetProperty("symbol", out var symbol) ? symbol.GetString() ?? "" : "",
@@ -60,6 +64,7 @@ public class StockDataService : IStockDataService
                         Exchange = item.TryGetProperty("exchange", out var exchange) ? exchange.GetString() ?? "" : "",
                         Type = item.TryGetProperty("instrument_type", out var type) ? type.GetString() ?? "" : ""
                     });
+                    count++;
                 }
             }
 
@@ -309,45 +314,25 @@ public class StockDataService : IStockDataService
     {
         try
         {
-            var symbolsParam = string.Join(",", symbols);
-            var url = $"{_apiUrl}/quote?symbol={Uri.EscapeDataString(symbolsParam)}&apikey={_apiKey}";
-            var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            var quotes = new List<StockQuote>();
-
-            // Twelve Data returns multiple quotes as an object with symbol keys
-            if (result.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var symbol in symbols)
-                {
-                    if (result.TryGetProperty(symbol, out var quoteElement))
-                    {
-                        var price = quoteElement.TryGetProperty("close", out var close) ? decimal.Parse(close.GetString() ?? "0") : 0;
-                        var previousClose = quoteElement.TryGetProperty("previous_close", out var prevClose) ? decimal.Parse(prevClose.GetString() ?? "0") : price;
-                        var change = quoteElement.TryGetProperty("change", out var changeProp) ? decimal.Parse(changeProp.GetString() ?? "0") : (price - previousClose);
-                        var changePercent = quoteElement.TryGetProperty("percent_change", out var changePct) ? decimal.Parse(changePct.GetString() ?? "0") : (previousClose != 0 ? (change / previousClose) * 100 : 0);
-                        var volume = quoteElement.TryGetProperty("volume", out var vol) ? long.Parse(vol.GetString() ?? "0") : 0;
-
-                        quotes.Add(new StockQuote
-                        {
-                            Symbol = symbol,
-                            Price = price,
-                            Change = change,
-                            ChangePercent = changePercent,
-                            Volume = volume,
-                            Timestamp = DateTime.UtcNow
-                        });
-                    }
-                }
-            }
-
+            _logger.LogInformation("Fetching quotes for {Count} symbols: {Symbols}", symbols.Count, string.Join(", ", symbols));
+            
+            // Fetch quotes in parallel using the single quote method which we know works
+            var quoteTasks = symbols.Select(symbol => GetStockQuoteAsync(symbol)).ToArray();
+            var quoteResults = await Task.WhenAll(quoteTasks);
+            
+            // Filter out null results and return valid quotes
+            var quotes = quoteResults
+                .Where(quote => quote != null)
+                .Select(quote => quote!)
+                .ToList();
+            
+            _logger.LogInformation("Successfully fetched {Count} quotes out of {Total} requested", quotes.Count, symbols.Count);
+            
             return quotes;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting multiple stock quotes");
+            _logger.LogError(ex, "Error getting multiple stock quotes for symbols: {Symbols}", string.Join(", ", symbols));
             throw;
         }
     }

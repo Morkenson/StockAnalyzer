@@ -117,14 +117,11 @@ import { Router } from '@angular/router';
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let holding of account.holdings">
+                  <tr *ngFor="let holding of account.holdings"
+                      (click)="viewStock(holding.symbol)"
+                      [attr.aria-label]="'View details for ' + holding.symbol">
                     <td>
-                      <button 
-                        class="symbol-link"
-                        (click)="viewStock(holding.symbol)"
-                        [attr.aria-label]="'View details for ' + holding.symbol">
-                        <strong>{{ holding.symbol }}</strong>
-                      </button>
+                      <strong>{{ holding.symbol }}</strong>
                     </td>
                     <td>{{ holding.quantity | number:'1.0-2' }}</td>
                     <td>{{ holding.currency }}{{ holding.averagePurchasePrice | number:'1.2-2' }}</td>
@@ -136,9 +133,7 @@ import { Router } from '@angular/router';
                     <td [class.positive]="holding.gainLossPercent >= 0" [class.negative]="holding.gainLossPercent < 0">
                       {{ holding.gainLossPercent >= 0 ? '+' : '' }}{{ holding.gainLossPercent | number:'1.2-2' }}%
                     </td>
-                    <td>
-                      <button class="btn btn-primary btn-sm" (click)="viewStock(holding.symbol)">View</button>
-                    </td>
+                    <td></td>
                   </tr>
                 </tbody>
                 <tfoot *ngIf="account.holdings && account.holdings.length > 0">
@@ -332,22 +327,21 @@ import { Router } from '@angular/router';
 
     .holdings-table tbody tr {
       transition: background-color var(--transition-fast);
+      cursor: pointer;
     }
 
     .holdings-table tbody tr:hover {
       background-color: var(--color-bg-tertiary);
     }
 
-    .holdings-table tbody tr td strong {
+    .holdings-table tbody tr td:first-child strong {
       color: var(--color-primary);
       font-weight: var(--font-weight-semibold);
-      cursor: pointer;
       transition: color var(--transition-base);
     }
 
-    .holdings-table tbody tr td strong:hover {
+    .holdings-table tbody tr:hover td:first-child strong {
       color: var(--color-primary-dark);
-      text-decoration: underline;
     }
 
     .account-total {
@@ -412,20 +406,6 @@ import { Router } from '@angular/router';
       margin: 0;
     }
 
-    .symbol-link {
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      text-align: left;
-      font-family: inherit;
-    }
-
-    .symbol-link:focus {
-      outline: 2px solid var(--color-primary);
-      outline-offset: 2px;
-      border-radius: var(--radius-sm);
-    }
 
     .positive {
       color: var(--color-success);

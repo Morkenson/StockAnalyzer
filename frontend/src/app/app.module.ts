@@ -15,6 +15,8 @@ import { PortfolioComponent } from './components/portfolio.component';
 import { HeaderComponent } from './components/shared/header/header.component';
 import { StockCardComponent } from './components/shared/stock-card/stock-card.component';
 import { StockChartComponent } from './components/shared/stock-chart/stock-chart.component';
+import { LoginComponent } from './components/login/login.component';
+import { SignupComponent } from './components/signup/signup.component';
 
 @NgModule({
   declarations: [
@@ -26,7 +28,9 @@ import { StockChartComponent } from './components/shared/stock-chart/stock-chart
     PortfolioComponent,
     HeaderComponent,
     StockCardComponent,
-    StockChartComponent
+    StockChartComponent,
+    LoginComponent,
+    SignupComponent
   ],
   imports: [
     BrowserModule,

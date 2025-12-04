@@ -37,7 +37,8 @@ export class StockService {
           if (!response.success || !response.data) {
             return [];
           }
-          return response.data;
+          // Limit to top 5 most likely results
+          return response.data.slice(0, 5);
         }),
         catchError(error => {
           console.error('Error searching stocks:', error);

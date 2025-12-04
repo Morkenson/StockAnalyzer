@@ -1,7 +1,8 @@
-import { Component, Input } from '@angular/core';
-import { StockQuote } from '../../../models/stock.model';
+import { Component, Input, OnInit, OnDestroy, HostListener, ElementRef, ViewChild } from '@angular/core';
+import { StockQuote, Watchlist } from '../../../models/stock.model';
 import { WatchlistService } from '../../../services/watchlist.service';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-stock-card',
@@ -14,14 +15,34 @@ import { Router } from '@angular/router';
           [attr.aria-label]="'View details for ' + stock.symbol">
           <h3>{{ stock.symbol }}</h3>
         </button>
-        <button 
-          *ngIf="showAddToWatchlist && !isInWatchlist"
-          class="btn btn-sm btn-secondary watchlist-btn" 
-          (click)="addToWatchlist()"
-          [attr.aria-label]="'Add ' + stock.symbol + ' to watchlist'">
-          <span class="btn-icon">+</span>
-          <span>Watchlist</span>
-        </button>
+        <div class="watchlist-dropdown-wrapper" *ngIf="showAddToWatchlist && !isInWatchlist">
+          <button 
+            class="btn btn-sm btn-secondary watchlist-btn" 
+            (click)="toggleWatchlistDropdown()"
+            [attr.aria-label]="'Add ' + stock.symbol + ' to watchlist'"
+            [attr.aria-expanded]="showDropdown">
+            <span class="btn-icon">+</span>
+            <span>Watchlist</span>
+          </button>
+          <div class="watchlist-dropdown" *ngIf="showDropdown" #watchlistDropdown>
+            <div class="dropdown-header">
+              <span>Add to Watchlist</span>
+            </div>
+            <div class="dropdown-list" *ngIf="watchlists.length > 0">
+              <button 
+                *ngFor="let wl of watchlists"
+                class="dropdown-item"
+                (click)="addToWatchlist(wl.id)"
+                [attr.aria-label]="'Add ' + stock.symbol + ' to ' + wl.name">
+                <span>{{ wl.name }}</span>
+                <span *ngIf="wl.isDefault" class="default-badge">Default</span>
+              </button>
+            </div>
+            <div class="dropdown-empty" *ngIf="watchlists.length === 0">
+              <p>No watchlists available</p>
+            </div>
+          </div>
+        </div>
         <span 
           *ngIf="showAddToWatchlist && isInWatchlist" 
           class="watchlist-indicator"
@@ -111,6 +132,10 @@ import { Router } from '@angular/router';
       border-radius: var(--radius-sm);
     }
 
+    .watchlist-dropdown-wrapper {
+      position: relative;
+    }
+
     .watchlist-btn {
       display: inline-flex;
       align-items: center;
@@ -121,6 +146,83 @@ import { Router } from '@angular/router';
     .btn-icon {
       font-size: var(--font-size-base);
       font-weight: var(--font-weight-bold);
+    }
+
+    .watchlist-dropdown {
+      position: absolute;
+      top: calc(100% + var(--spacing-xs));
+      right: 0;
+      min-width: 200px;
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      overflow: hidden;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .dropdown-header {
+      padding: var(--spacing-md);
+      background: var(--color-bg-tertiary);
+      border-bottom: 1px solid var(--color-border);
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-sm);
+      color: var(--color-text-primary);
+    }
+
+    .dropdown-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .dropdown-item {
+      width: 100%;
+      padding: var(--spacing-md);
+      background: transparent;
+      border: none;
+      color: var(--color-text-primary);
+      font-size: var(--font-size-sm);
+      text-align: left;
+      cursor: pointer;
+      transition: background-color var(--transition-base);
+      font-family: var(--font-family);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .dropdown-item:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .dropdown-item:active {
+      background: var(--color-bg-secondary);
+    }
+
+    .default-badge {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-tertiary);
+      font-weight: var(--font-weight-normal);
+    }
+
+    .dropdown-empty {
+      padding: var(--spacing-md);
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
     }
 
     .watchlist-indicator {
@@ -216,30 +318,68 @@ import { Router } from '@angular/router';
     }
   `]
 })
-export class StockCardComponent {
+export class StockCardComponent implements OnInit, OnDestroy {
+  @ViewChild('watchlistDropdown', { static: false }) watchlistDropdown?: ElementRef;
+  
   @Input() stock!: StockQuote;
   @Input() showAddToWatchlist = false;
   isInWatchlist = false;
+  watchlists: Watchlist[] = [];
+  showDropdown = false;
+  private subscriptions = new Subscription();
 
   constructor(
     private watchlistService: WatchlistService,
-    private router: Router
-  ) {
+    private router: Router,
+    private elementRef: ElementRef
+  ) {}
+
+  ngOnInit(): void {
+    // Load watchlists
+    this.subscriptions.add(
+      this.watchlistService.getWatchlists().subscribe(watchlists => {
+        this.watchlists = watchlists;
+      })
+    );
+
     // Check watchlist status
-    if (this.stock) {
+    this.subscriptions.add(
       this.watchlistService.getWatchlist().subscribe(watchlist => {
         this.isInWatchlist = watchlist.some(item => item.symbol === this.stock.symbol);
-      });
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (this.showDropdown && this.watchlistDropdown) {
+      const clickedInside = this.elementRef.nativeElement.contains(event.target);
+      if (!clickedInside) {
+        this.showDropdown = false;
+      }
     }
+  }
+
+  toggleWatchlistDropdown(): void {
+    this.showDropdown = !this.showDropdown;
   }
 
   viewStock(): void {
     this.router.navigate(['/stock', this.stock.symbol]);
   }
 
-  addToWatchlist(): void {
-    this.watchlistService.addToWatchlist(this.stock.symbol);
-    this.isInWatchlist = true;
+  async addToWatchlist(watchlistId: string): Promise<void> {
+    try {
+      await this.watchlistService.addToWatchlist(this.stock.symbol, undefined, watchlistId);
+      this.showDropdown = false;
+      // Watchlist status will be updated automatically via subscription
+    } catch (error) {
+      console.error('Error adding to watchlist:', error);
+    }
   }
 }
 

@@ -1,10 +1,12 @@
 import { Component } from '@angular/core';
+import { Router, NavigationEnd } from '@angular/router';
+import { filter } from 'rxjs/operators';
 
 @Component({
   selector: 'app-root',
   template: `
-    <app-header></app-header>
-    <main class="container main-content">
+    <app-header *ngIf="showHeader"></app-header>
+    <main [class.main-content]="showHeader" [class.main-content-full]="!showHeader">
       <router-outlet></router-outlet>
     </main>
   `,
@@ -12,6 +14,11 @@ import { Component } from '@angular/core';
     .main-content {
       padding: var(--spacing-xl) var(--spacing-lg);
       min-height: calc(100vh - 80px);
+    }
+
+    .main-content-full {
+      padding: 0;
+      min-height: 100vh;
     }
 
     @media (max-width: 768px) {
@@ -23,5 +30,15 @@ import { Component } from '@angular/core';
 })
 export class AppComponent {
   title = 'Midnight Wealth';
+  showHeader = true;
+
+  constructor(private router: Router) {
+    // Hide header on login and signup pages
+    this.router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe((event: any) => {
+        this.showHeader = !['/login', '/signup'].includes(event.url);
+      });
+  }
 }
 

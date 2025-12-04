@@ -5,14 +5,19 @@ import { StockSearchComponent } from './components/stock-search.component';
 import { StockDetailsComponent } from './components/shared/stock-details/stock-details.component';
 import { WatchlistComponent } from './components/watchlist.component';
 import { PortfolioComponent } from './components/portfolio.component';
+import { LoginComponent } from './components/login/login.component';
+import { SignupComponent } from './components/signup/signup.component';
+import { AuthGuard } from './guards/auth.guard';
 
 const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
-  { path: 'dashboard', component: DashboardComponent },
-  { path: 'search', component: StockSearchComponent },
-  { path: 'stock/:symbol', component: StockDetailsComponent },
-  { path: 'watchlist', component: WatchlistComponent },
-  { path: 'portfolio', component: PortfolioComponent },
+  { path: 'login', component: LoginComponent },
+  { path: 'signup', component: SignupComponent },
+  { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard] },
+  { path: 'search', component: StockSearchComponent, canActivate: [AuthGuard] },
+  { path: 'stock/:symbol', component: StockDetailsComponent, canActivate: [AuthGuard] },
+  { path: 'watchlist', component: WatchlistComponent, canActivate: [AuthGuard] },
+  { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];
 
