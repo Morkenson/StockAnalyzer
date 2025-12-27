@@ -18,8 +18,8 @@ export const environment = {
   
   // Supabase Configuration
   supabase: {
-    url: 'https://izhnkpxnjqgpuavxrain.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6aG5rcHhuanFncHVhdnhyYWluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MjUxNTksImV4cCI6MjA4MDIwMTE1OX0.VY3SMpVU5UmU-NBMs1uXVN-GjkYprUt0jLyMzuHBuWc'
+    url: '',
+    anonKey: ''
   }
 };
 

@@ -1,4 +1,4 @@
-import { NgModule } from '@angular/core';
+import { NgModule, ErrorHandler } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { HttpClientModule } from '@angular/common/http';
@@ -9,14 +9,15 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { DashboardComponent } from './components/dashboard.component';
 import { StockSearchComponent } from './components/stock-search.component';
-import { StockDetailsComponent } from './components/shared/stock-details/stock-details.component';
+import { StockDetailsComponent } from './components/shared/stock-details.component';
 import { WatchlistComponent } from './components/watchlist.component';
 import { PortfolioComponent } from './components/portfolio.component';
-import { HeaderComponent } from './components/shared/header/header.component';
-import { StockCardComponent } from './components/shared/stock-card/stock-card.component';
-import { StockChartComponent } from './components/shared/stock-chart/stock-chart.component';
-import { LoginComponent } from './components/login/login.component';
-import { SignupComponent } from './components/signup/signup.component';
+import { HeaderComponent } from './components/shared/header.component';
+import { StockCardComponent } from './components/shared/stock-card.component';
+import { StockChartComponent } from './components/shared/stock-chart.component';
+import { LoginComponent } from './components/login.component';
+import { SignupComponent } from './components/signup.component';
+import { GlobalErrorHandler } from './services/global-error-handler.service';
 
 @NgModule({
   declarations: [
@@ -41,7 +42,9 @@ import { SignupComponent } from './components/signup/signup.component';
     ReactiveFormsModule,
     NgChartsModule
   ],
-  providers: [],
+  providers: [
+    { provide: ErrorHandler, useClass: GlobalErrorHandler }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

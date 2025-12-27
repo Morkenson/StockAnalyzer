@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, combineLatest } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable } from 'rxjs';
 import { WatchlistItem, Watchlist } from '../models/stock.model';
 import { SupabaseService } from './supabase.service';
 import { AuthService } from './auth.service';
@@ -48,6 +47,10 @@ export class WatchlistService {
     // Load watchlists when user logs in
     this.authService.currentUser$.subscribe(user => {
       if (user) {
+        // Try to load from cache first for instant display
+        this.loadWatchlistsFromCache(user.id);
+        
+        // Then load from server to ensure we have the latest data
         this.loadWatchlists().then(() => {
           this.loadSelectedWatchlistItems();
         });
@@ -55,6 +58,7 @@ export class WatchlistService {
         this.watchlistsSubject.next([]);
         this.selectedWatchlistIdSubject.next(null);
         this.watchlistItemsSubject.next([]);
+        this.clearWatchlistCache();
       }
     });
   }
@@ -71,13 +75,6 @@ export class WatchlistService {
    */
   getWatchlist(): Observable<WatchlistItem[]> {
     return this.watchlist$;
-  }
-
-  /**
-   * Get selected watchlist ID
-   */
-  getSelectedWatchlistId(): string | null {
-    return this.selectedWatchlistIdSubject.value;
   }
 
   /**
@@ -103,7 +100,7 @@ export class WatchlistService {
 
       if (error) throw error;
 
-      await this.loadWatchlists();
+      await this.loadWatchlists(); // This will update the cache
       
       // If this is the default or first watchlist, select it
       if (isDefault || this.watchlistsSubject.value.length === 1) {
@@ -281,47 +278,96 @@ export class WatchlistService {
   }
 
   /**
-   * Check if symbol is in any watchlist (or specific watchlist)
+   * Check if symbol is in the selected watchlist
    */
-  isInWatchlist(symbol: string, watchlistId?: string): boolean {
+  isInWatchlist(symbol: string): boolean {
     const items = this.watchlistItemsSubject.value;
-    const targetWatchlistId = watchlistId || this.selectedWatchlistIdSubject.value;
-    
-    if (targetWatchlistId) {
-      // Check only in specific watchlist
-      return items.some(item => item.symbol.toUpperCase() === symbol.toUpperCase());
-    }
-    
-    // For backward compatibility, check all watchlists
-    // This is less efficient but maintains compatibility
-    return false;
+    return items.some(item => item.symbol.toUpperCase() === symbol.toUpperCase());
   }
 
   /**
-   * Update watchlist item notes
+   * Get cache key for localStorage
    */
-  async updateNotes(symbol: string, notes: string, watchlistId?: string): Promise<void> {
-    const targetWatchlistId = watchlistId || this.selectedWatchlistIdSubject.value;
-    if (!targetWatchlistId) {
-      throw new Error('No watchlist selected');
-    }
+  private getCacheKey(userId: string, type: string): string {
+    return `watchlist_cache_${userId}_${type}`;
+  }
 
+  /**
+   * Load watchlists from localStorage cache
+   */
+  private loadWatchlistsFromCache(userId: string): void {
     try {
-      const { error } = await this.supabaseService.client
-        .from('watchlist_items')
-        .update({ notes: notes || null })
-        .eq('watchlist_id', targetWatchlistId)
-        .eq('symbol', symbol.toUpperCase());
-
-      if (error) throw error;
-
-      // Reload watchlist items if this is the selected watchlist
-      if (targetWatchlistId === this.selectedWatchlistIdSubject.value) {
-        await this.loadSelectedWatchlistItems();
+      const cacheKey = this.getCacheKey(userId, 'watchlists');
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const watchlists: Watchlist[] = JSON.parse(cached).map((w: any) => ({
+          ...w,
+          createdAt: new Date(w.createdAt),
+          updatedAt: new Date(w.updatedAt)
+        }));
+        this.watchlistsSubject.next(watchlists);
       }
     } catch (error) {
-      console.error('Error updating watchlist notes:', error);
-      throw error;
+      console.error('Error loading watchlists from cache:', error);
+    }
+  }
+
+  /**
+   * Save watchlists to localStorage cache
+   */
+  private saveWatchlistsToCache(userId: string, watchlists: Watchlist[]): void {
+    try {
+      const cacheKey = this.getCacheKey(userId, 'watchlists');
+      localStorage.setItem(cacheKey, JSON.stringify(watchlists));
+    } catch (error) {
+      console.error('Error saving watchlists to cache:', error);
+    }
+  }
+
+  /**
+   * Load watchlist items from localStorage cache
+   */
+  private loadWatchlistItemsFromCache(userId: string, watchlistId: string): void {
+    try {
+      const cacheKey = this.getCacheKey(userId, `items_${watchlistId}`);
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const items: WatchlistItem[] = JSON.parse(cached).map((item: any) => ({
+          ...item,
+          addedDate: new Date(item.addedDate)
+        }));
+        this.watchlistItemsSubject.next(items);
+      }
+    } catch (error) {
+      console.error('Error loading watchlist items from cache:', error);
+    }
+  }
+
+  /**
+   * Save watchlist items to localStorage cache
+   */
+  private saveWatchlistItemsToCache(userId: string, watchlistId: string, items: WatchlistItem[]): void {
+    try {
+      const cacheKey = this.getCacheKey(userId, `items_${watchlistId}`);
+      localStorage.setItem(cacheKey, JSON.stringify(items));
+    } catch (error) {
+      console.error('Error saving watchlist items to cache:', error);
+    }
+  }
+
+  /**
+   * Clear watchlist cache
+   */
+  private clearWatchlistCache(): void {
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('watchlist_cache_')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (error) {
+      console.error('Error clearing watchlist cache:', error);
     }
   }
 
@@ -348,6 +394,9 @@ export class WatchlistService {
       const watchlists: Watchlist[] = (data || []).map((row: WatchlistRow) => this.mapWatchlistRow(row));
 
       this.watchlistsSubject.next(watchlists);
+      
+      // Save to cache
+      this.saveWatchlistsToCache(user.id, watchlists);
 
       // If no watchlists exist, create a default one
       if (watchlists.length === 0) {
@@ -376,9 +425,16 @@ export class WatchlistService {
    */
   private async loadSelectedWatchlistItems(): Promise<void> {
     const watchlistId = this.selectedWatchlistIdSubject.value;
+    const user = this.authService.getCurrentUser();
+    
     if (!watchlistId) {
       this.watchlistItemsSubject.next([]);
       return;
+    }
+
+    if (user) {
+      // Try to load from cache first
+      this.loadWatchlistItemsFromCache(user.id, watchlistId);
     }
 
     try {
@@ -398,6 +454,11 @@ export class WatchlistService {
       }));
 
       this.watchlistItemsSubject.next(watchlistItems);
+      
+      // Save to cache
+      if (user) {
+        this.saveWatchlistItemsToCache(user.id, watchlistId, watchlistItems);
+      }
     } catch (error) {
       console.error('Error loading watchlist items from Supabase:', error);
       this.watchlistItemsSubject.next([]);

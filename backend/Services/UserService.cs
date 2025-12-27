@@ -17,10 +17,5 @@ public class UserService : IUserService
         _userSecrets[userId] = userSecret;
         return Task.CompletedTask;
     }
-
-    public Task<bool> UserExistsAsync(string userId)
-    {
-        return Task.FromResult(_userSecrets.ContainsKey(userId));
-    }
 }
 

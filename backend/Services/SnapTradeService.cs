@@ -47,32 +47,6 @@ public class SnapTradeService : ISnapTradeService
         }
     }
 
-    public async Task<SnapTradeUser?> GetUserAsync(string userId, string userSecret)
-    {
-        try
-        {
-            var queryParams = $"?userId={Uri.EscapeDataString(userId)}&userSecret={Uri.EscapeDataString(userSecret)}";
-            var response = await _httpClient.GetAsync($"/snapTrade/v1/users{queryParams}");
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-                return new SnapTradeUser
-                {
-                    Id = result.GetProperty("id").GetString() ?? "",
-                    UserId = userId,
-                    Email = result.TryGetProperty("email", out var email) ? email.GetString() : null
-                };
-            }
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching SnapTrade user for userId: {UserId}", userId);
-            throw;
-        }
-    }
-
     public async Task<List<Brokerage>> GetBrokeragesAsync()
     {
         try
@@ -169,49 +143,6 @@ public class SnapTradeService : ISnapTradeService
         }
     }
 
-    public async Task<Account?> GetAccountAsync(string userId, string userSecret, string accountId)
-    {
-        try
-        {
-            var queryParams = $"?userId={Uri.EscapeDataString(userId)}&userSecret={Uri.EscapeDataString(userSecret)}";
-            var response = await _httpClient.GetAsync($"/snapTrade/v1/accounts/{accountId}{queryParams}");
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            return ParseAccount(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching account {AccountId} for userId: {UserId}", accountId, userId);
-            throw;
-        }
-    }
-
-    public async Task<AccountBalance> GetAccountBalanceAsync(string userId, string userSecret, string accountId)
-    {
-        try
-        {
-            var queryParams = $"?userId={Uri.EscapeDataString(userId)}&userSecret={Uri.EscapeDataString(userSecret)}";
-            var response = await _httpClient.GetAsync($"/snapTrade/v1/accounts/{accountId}/balances{queryParams}");
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            return new AccountBalance
-            {
-                AccountId = accountId,
-                TotalCash = result.TryGetProperty("totalCash", out var cash) ? cash.GetDecimal() : 0,
-                BuyingPower = result.TryGetProperty("buyingPower", out var buying) ? buying.GetDecimal() : 0,
-                Currency = result.TryGetProperty("currency", out var currency) ? currency.GetString() ?? "USD" : "USD",
-                Positions = result.TryGetProperty("positions", out var positions) ? positions.GetArrayLength() : 0
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching account balance for account {AccountId}", accountId);
-            throw;
-        }
-    }
-
     public async Task<List<Holding>> GetAccountHoldingsAsync(string userId, string userSecret, string accountId)
     {
         try
@@ -274,55 +205,6 @@ public class SnapTradeService : ISnapTradeService
         };
     }
 
-    public async Task<TradeExecution> PlaceTradeAsync(string userId, string userSecret, string accountId, TradeOrder order)
-    {
-        try
-        {
-            var body = new
-            {
-                userId = userId,
-                userSecret = userSecret,
-                accountId = accountId,
-                symbol = order.Symbol,
-                action = order.Action,
-                units = order.Quantity,
-                orderType = order.OrderType,
-                timeInForce = order.TimeInForce,
-                price = order.LimitPrice,
-                stop = order.StopPrice
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/snapTrade/v1/trade/place", body);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            return ParseTradeExecution(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error placing trade for account {AccountId}", accountId);
-            throw;
-        }
-    }
-
-    public async Task<TradeExecution?> GetTradeStatusAsync(string userId, string userSecret, string accountId, string tradeId)
-    {
-        try
-        {
-            var queryParams = $"?userId={Uri.EscapeDataString(userId)}&userSecret={Uri.EscapeDataString(userSecret)}";
-            var response = await _httpClient.GetAsync($"/snapTrade/v1/trade/{tradeId}{queryParams}");
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-            return ParseTradeExecution(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error fetching trade status for trade {TradeId}", tradeId);
-            throw;
-        }
-    }
-
     private Account ParseAccount(JsonElement element)
     {
         return new Account
@@ -359,21 +241,5 @@ public class SnapTradeService : ISnapTradeService
         };
     }
 
-    private TradeExecution ParseTradeExecution(JsonElement element)
-    {
-        return new TradeExecution
-        {
-            Id = element.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
-            AccountId = element.TryGetProperty("accountId", out var accId) ? accId.GetString() ?? "" : "",
-            Symbol = element.TryGetProperty("symbol", out var symbol) ? symbol.GetString() ?? "" : "",
-            Action = element.TryGetProperty("action", out var action) ? action.GetString() ?? "" : "",
-            Quantity = element.TryGetProperty("quantity", out var qty) ? qty.GetDecimal() : 0,
-            Price = element.TryGetProperty("price", out var price) ? price.GetDecimal() : 0,
-            Status = element.TryGetProperty("status", out var status) ? status.GetString() ?? "" : "",
-            ExecutedAt = element.TryGetProperty("executedAt", out var exec) 
-                ? exec.GetDateTime() 
-                : DateTime.UtcNow
-        };
-    }
 }
 

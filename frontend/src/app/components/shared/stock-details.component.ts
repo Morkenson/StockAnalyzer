@@ -1,8 +1,8 @@
 import { Component, OnInit, OnDestroy, HostListener, ElementRef, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { StockService } from '../../../services/stock.service';
-import { WatchlistService } from '../../../services/watchlist.service';
-import { Stock, StockHistoricalData, StockMetrics, Watchlist } from '../../../models/stock.model';
+import { StockService } from '../../services/stock.service';
+import { WatchlistService } from '../../services/watchlist.service';
+import { Stock, StockHistoricalData, Watchlist } from '../../models/stock.model';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -126,243 +126,12 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
-    .stock-details {
-      padding: var(--spacing-xl) 0;
-    }
-
-    .stock-details h1 {
-      margin-bottom: var(--spacing-sm);
-      color: var(--color-text-primary);
-    }
-
-    .stock-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--spacing-lg);
-      gap: var(--spacing-lg);
-      flex-wrap: wrap;
-    }
-
-    .stock-info {
-      flex: 1;
-      min-width: 200px;
-    }
-
-    .stock-chart-section {
-      margin: var(--spacing-lg) 0;
-      border-top: 1px solid var(--color-border-light);
-      padding-top: var(--spacing-lg);
-    }
-
-    .stock-name {
-      font-size: var(--font-size-lg);
-      color: var(--color-text-secondary);
-      margin: var(--spacing-xs) 0;
-      font-weight: var(--font-weight-medium);
-    }
-
-    .stock-exchange {
-      font-size: var(--font-size-sm);
-      color: var(--color-text-tertiary);
-      margin: 0;
-      display: inline-block;
-      padding: var(--spacing-xs) var(--spacing-sm);
-      background-color: var(--color-bg-tertiary);
-      border-radius: var(--radius-sm);
-    }
-
-    .stock-price-section {
-      text-align: right;
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacing-xs);
-      align-items: flex-end;
-    }
-
-    .stock-change {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-xs);
-      font-size: var(--font-size-base);
-      font-weight: var(--font-weight-medium);
-    }
-
-    .change-arrow {
-      font-size: var(--font-size-lg);
-    }
-
-    .stock-actions {
-      margin-top: var(--spacing-lg);
-      display: flex;
-      gap: var(--spacing-md);
-    }
-
-    .metrics-table {
-      width: 100%;
-    }
-
-    .metrics-table tr {
-      transition: background-color var(--transition-fast);
-    }
-
-    .metrics-table tr:hover {
-      background-color: var(--color-bg-tertiary);
-    }
-
-    .metrics-table td {
-      padding: var(--spacing-md) 0;
-      border-bottom: 1px solid var(--color-border-light);
-    }
-
-    .metrics-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .metrics-table td:first-child {
-      font-weight: var(--font-weight-medium);
-      color: var(--color-text-secondary);
-      font-size: var(--font-size-sm);
-    }
-
-    .metrics-table td:last-child {
-      text-align: right;
-      font-weight: var(--font-weight-semibold);
-      color: var(--color-text-primary);
-    }
-
-    @media (max-width: 768px) {
-      .stock-details {
-        padding: var(--spacing-lg) 0;
-      }
-
-      .stock-header {
-        flex-direction: column;
-        margin-bottom: var(--spacing-md);
-      }
-
-      .stock-price-section {
-        text-align: left;
-        width: 100%;
-      }
-
-      .stock-chart-section {
-        margin: var(--spacing-md) 0;
-        padding-top: var(--spacing-md);
-      }
-
-      .stock-actions {
-        flex-direction: column;
-        margin-top: var(--spacing-md);
-      }
-
-      .stock-actions .btn {
-        width: 100%;
-      }
-    }
-
-    .loading-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--spacing-md);
-      padding: var(--spacing-2xl) 0;
-    }
-
-    .loading-state p {
-      color: var(--color-text-secondary);
-      margin: 0;
-    }
-
-    .watchlist-dropdown-wrapper {
-      position: relative;
-      display: inline-block;
-    }
-
-    .watchlist-dropdown {
-      position: absolute;
-      top: calc(100% + var(--spacing-xs));
-      left: 0;
-      min-width: 200px;
-      background: var(--color-bg-primary);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      z-index: 1000;
-      overflow: hidden;
-      animation: slideDown 0.2s ease-out;
-    }
-
-    @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .dropdown-header {
-      padding: var(--spacing-md);
-      background: var(--color-bg-tertiary);
-      border-bottom: 1px solid var(--color-border);
-      font-weight: var(--font-weight-semibold);
-      font-size: var(--font-size-sm);
-      color: var(--color-text-primary);
-    }
-
-    .dropdown-list {
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .dropdown-item {
-      width: 100%;
-      padding: var(--spacing-md);
-      background: transparent;
-      border: none;
-      color: var(--color-text-primary);
-      font-size: var(--font-size-sm);
-      text-align: left;
-      cursor: pointer;
-      transition: background-color var(--transition-base);
-      font-family: var(--font-family);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: var(--spacing-sm);
-    }
-
-    .dropdown-item:hover {
-      background: var(--color-bg-tertiary);
-    }
-
-    .dropdown-item:active {
-      background: var(--color-bg-secondary);
-    }
-
-    .default-badge {
-      font-size: var(--font-size-xs);
-      color: var(--color-text-tertiary);
-      font-weight: var(--font-weight-normal);
-    }
-
-    .dropdown-empty {
-      padding: var(--spacing-md);
-      text-align: center;
-      color: var(--color-text-secondary);
-      font-size: var(--font-size-sm);
-    }
-  `]
+  styleUrls: ['../../styles/components/shared/stock-details.component.scss']
 })
 export class StockDetailsComponent implements OnInit, OnDestroy {
   @ViewChild('watchlistDropdown', { static: false }) watchlistDropdown?: ElementRef;
   
   stock: Stock | null = null;
-  metrics: StockMetrics | null = null;
   historicalData: StockHistoricalData[] = [];
   loading = true;
   error: string | null = null;
@@ -426,16 +195,6 @@ export class StockDetailsComponent implements OnInit, OnDestroy {
         this.error = 'Failed to load stock data. Please try again.';
         this.loading = false;
         console.error(err);
-      }
-    });
-
-    // Load metrics
-    this.stockService.getStockMetrics(this.symbol).subscribe({
-      next: (metrics) => {
-        this.metrics = metrics;
-      },
-      error: (err) => {
-        console.error('Failed to load metrics:', err);
       }
     });
 

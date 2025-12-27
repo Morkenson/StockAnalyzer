@@ -45,9 +45,7 @@ import { Subscription } from 'rxjs';
               </button>
             </div>
           </div>
-          <p class="watchlist-subtitle" *ngIf="selectedWatchlist && watchlistItems.length > 0">
-            {{ selectedWatchlist.name }} • Tracking {{ watchlistItems.length }} {{ watchlistItems.length === 1 ? 'stock' : 'stocks' }}
-          </p>
+          
         </div>
         <button 
           *ngIf="selectedWatchlist && watchlistItems.length > 0" 
@@ -82,7 +80,7 @@ import { Subscription } from 'rxjs';
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" (click)="showCreateModal = false">Cancel</button>
-            <button class="btn btn-primary" (click)="createWatchlist()" [disabled]="!newWatchlistName?.trim()">Create</button>
+            <button class="btn btn-primary" (click)="createWatchlist()" [disabled]="!newWatchlistName.trim()">Create</button>
           </div>
         </div>
       </div>
@@ -112,7 +110,7 @@ import { Subscription } from 'rxjs';
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" (click)="showEditModal = false">Cancel</button>
-            <button class="btn btn-primary" (click)="updateWatchlist()" [disabled]="!editWatchlistName?.trim()">Save</button>
+            <button class="btn btn-primary" (click)="updateWatchlist()" [disabled]="!editWatchlistName.trim()">Save</button>
           </div>
         </div>
       </div>
@@ -138,8 +136,8 @@ import { Subscription } from 'rxjs';
 
       <div *ngIf="selectedWatchlist && watchlistItems.length > 0" class="card watchlist-card">
         <div class="card-header">
-          <span>Watchlist</span>
-          <span class="card-badge">{{ watchlistItems.length }}</span>
+          <span>{{ selectedWatchlist.name }}</span>
+          
         </div>
         
         <div *ngIf="loading" class="loading-state">
@@ -204,282 +202,7 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
-    .watchlist {
-      padding: var(--spacing-xl) 0;
-    }
-
-    .watchlist-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--spacing-2xl);
-      gap: var(--spacing-lg);
-    }
-
-    .watchlist-header h1 {
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .watchlist-subtitle {
-      font-size: var(--font-size-lg);
-      color: var(--color-text-secondary);
-      margin-bottom: 0;
-    }
-
-    .watchlist-card {
-      margin-bottom: var(--spacing-lg);
-    }
-
-    .loading-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--spacing-md);
-      padding: var(--spacing-2xl) 0;
-    }
-
-    .loading-state p {
-      color: var(--color-text-secondary);
-      margin: 0;
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-      margin-top: var(--spacing-md);
-    }
-
-    .watchlist-row {
-      transition: background-color var(--transition-fast);
-      cursor: pointer;
-    }
-
-    .watchlist-row:hover {
-      background-color: var(--color-bg-tertiary);
-    }
-
-    .watchlist-row td:first-child strong {
-      color: var(--color-primary);
-      font-weight: var(--font-weight-semibold);
-      transition: color var(--transition-base);
-    }
-
-    .watchlist-row:hover td:first-child strong {
-      color: var(--color-primary-dark);
-    }
-
-    .price-cell {
-      font-weight: var(--font-weight-semibold);
-    }
-
-    .price-value {
-      color: var(--color-text-primary);
-      font-size: var(--font-size-base);
-    }
-
-    .change-value,
-    .change-percent {
-      font-weight: var(--font-weight-medium);
-      font-size: var(--font-size-sm);
-    }
-
-    .volume-cell {
-      color: var(--color-text-secondary);
-      font-size: var(--font-size-sm);
-    }
-
-    .date-cell {
-      color: var(--color-text-secondary);
-      font-size: var(--font-size-sm);
-    }
-
-    .actions-cell {
-      white-space: nowrap;
-    }
-
-    .actions-cell button {
-      cursor: pointer;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: var(--spacing-sm);
-      flex-wrap: wrap;
-    }
-
-    .header-left {
-      flex: 1;
-    }
-
-    .watchlist-selector-wrapper {
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .watchlist-controls {
-      display: flex;
-      gap: var(--spacing-sm);
-      align-items: center;
-      margin-top: var(--spacing-sm);
-      flex-wrap: wrap;
-    }
-
-    .watchlist-select {
-      padding: var(--spacing-sm) var(--spacing-md);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
-      font-size: var(--font-size-base);
-      font-family: var(--font-family);
-      cursor: pointer;
-      min-width: 200px;
-    }
-
-    .watchlist-select:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    }
-
-    .btn-danger {
-      background-color: var(--color-danger, #ef4444);
-      color: white;
-      border-color: var(--color-danger, #ef4444);
-    }
-
-    .btn-danger:hover {
-      background-color: var(--color-danger-dark, #dc2626);
-      border-color: var(--color-danger-dark, #dc2626);
-    }
-
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: var(--spacing-lg);
-    }
-
-    .modal-content {
-      background: var(--color-bg-primary);
-      border-radius: var(--radius-lg);
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-      max-width: 500px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--spacing-lg);
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    .modal-header h2 {
-      margin: 0;
-      font-size: var(--font-size-xl);
-    }
-
-    .modal-close {
-      background: none;
-      border: none;
-      font-size: var(--font-size-2xl);
-      color: var(--color-text-secondary);
-      cursor: pointer;
-      padding: 0;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-sm);
-      transition: background-color var(--transition-base);
-    }
-
-    .modal-close:hover {
-      background: var(--color-bg-tertiary);
-    }
-
-    .modal-body {
-      padding: var(--spacing-lg);
-    }
-
-    .modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--spacing-md);
-      padding: var(--spacing-lg);
-      border-top: 1px solid var(--color-border);
-    }
-
-    .form-group {
-      margin-bottom: var(--spacing-lg);
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: var(--spacing-xs);
-      font-weight: var(--font-weight-medium);
-      color: var(--color-text-primary);
-    }
-
-    .form-control {
-      width: 100%;
-      padding: var(--spacing-sm) var(--spacing-md);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
-      font-size: var(--font-size-base);
-      font-family: var(--font-family);
-    }
-
-    .form-control:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    }
-
-    .form-group input[type="checkbox"] {
-      margin-right: var(--spacing-xs);
-    }
-
-    @media (max-width: 768px) {
-      .watchlist {
-        padding: var(--spacing-lg) 0;
-      }
-
-      .watchlist-header {
-        flex-direction: column;
-        margin-bottom: var(--spacing-xl);
-      }
-
-      .watchlist-subtitle {
-        font-size: var(--font-size-base);
-      }
-
-      .table-wrapper {
-        font-size: var(--font-size-xs);
-      }
-
-      .action-buttons {
-        flex-direction: column;
-      }
-
-      .action-buttons .btn {
-        width: 100%;
-      }
-    }
-  `]
+  styleUrls: ['../styles/components/watchlist.component.scss']
 })
 export class WatchlistComponent implements OnInit, OnDestroy {
   watchlists: Watchlist[] = [];
@@ -550,7 +273,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   }
   
   async createWatchlist(): Promise<void> {
-    if (!this.newWatchlistName?.trim()) {
+    if (!this.newWatchlistName.trim()) {
       return;
     }
     
@@ -572,7 +295,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   }
   
   async updateWatchlist(): Promise<void> {
-    if (!this.selectedWatchlist || !this.editWatchlistName?.trim()) {
+    if (!this.selectedWatchlist || !this.editWatchlistName.trim()) {
       return;
     }
     

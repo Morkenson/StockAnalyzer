@@ -2,11 +2,11 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { DashboardComponent } from './components/dashboard.component';
 import { StockSearchComponent } from './components/stock-search.component';
-import { StockDetailsComponent } from './components/shared/stock-details/stock-details.component';
+import { StockDetailsComponent } from './components/shared/stock-details.component';
 import { WatchlistComponent } from './components/watchlist.component';
 import { PortfolioComponent } from './components/portfolio.component';
-import { LoginComponent } from './components/login/login.component';
-import { SignupComponent } from './components/signup/signup.component';
+import { LoginComponent } from './components/login.component';
+import { SignupComponent } from './components/signup.component';
 import { AuthGuard } from './guards/auth.guard';
 
 const routes: Routes = [

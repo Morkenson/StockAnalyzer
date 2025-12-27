@@ -17,16 +17,6 @@ public class Brokerage
     public bool SupportsOAuth { get; set; }
 }
 
-public class BrokerageConnection
-{
-    public string Id { get; set; } = string.Empty;
-    public string BrokerageId { get; set; } = string.Empty;
-    public string BrokerageName { get; set; } = string.Empty;
-    public string UserId { get; set; } = string.Empty;
-    public List<Account> Accounts { get; set; } = new();
-    public string ConnectionStatus { get; set; } = "CONNECTED";
-}
-
 public class Account
 {
     public string Id { get; set; } = string.Empty;
@@ -59,38 +49,6 @@ public class Portfolio
     public decimal TotalGainLoss { get; set; }
     public decimal TotalGainLossPercent { get; set; }
     public string Currency { get; set; } = "USD";
-}
-
-public class TradeOrder
-{
-    public string Symbol { get; set; } = string.Empty;
-    public string Action { get; set; } = string.Empty; // BUY, SELL
-    public decimal Quantity { get; set; }
-    public string OrderType { get; set; } = string.Empty; // MARKET, LIMIT, STOP
-    public string TimeInForce { get; set; } = "DAY";
-    public decimal? LimitPrice { get; set; }
-    public decimal? StopPrice { get; set; }
-}
-
-public class TradeExecution
-{
-    public string Id { get; set; } = string.Empty;
-    public string AccountId { get; set; } = string.Empty;
-    public string Symbol { get; set; } = string.Empty;
-    public string Action { get; set; } = string.Empty;
-    public decimal Quantity { get; set; }
-    public decimal Price { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public DateTime ExecutedAt { get; set; }
-}
-
-public class AccountBalance
-{
-    public string AccountId { get; set; } = string.Empty;
-    public decimal TotalCash { get; set; }
-    public decimal BuyingPower { get; set; }
-    public string Currency { get; set; } = "USD";
-    public int Positions { get; set; }
 }
 
 public class ApiResponse<T>

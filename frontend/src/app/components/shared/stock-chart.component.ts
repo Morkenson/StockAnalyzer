@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { ChartConfiguration, ChartType } from 'chart.js';
-import { StockHistoricalData } from '../../../models/stock.model';
+import { StockHistoricalData } from '../../models/stock.model';
 
 @Component({
   selector: 'app-stock-chart',
@@ -16,29 +16,7 @@ import { StockHistoricalData } from '../../../models/stock.model';
       </canvas>
     </div>
   `,
-  styles: [`
-    .chart-container {
-      position: relative;
-      width: 100%;
-      height: 300px;
-      padding: var(--spacing-sm);
-    }
-
-    .chart-empty {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--color-text-secondary);
-    }
-
-    @media (max-width: 768px) {
-      .chart-container {
-        height: 250px;
-        padding: var(--spacing-xs);
-      }
-    }
-  `]
+  styleUrls: ['../../styles/components/shared/stock-chart.component.scss']
 })
 export class StockChartComponent implements OnInit, OnChanges {
   @Input() historicalData: StockHistoricalData[] = [];

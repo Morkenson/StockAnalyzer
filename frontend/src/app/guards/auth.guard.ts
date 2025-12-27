@@ -11,10 +11,13 @@ export class AuthGuard implements CanActivate {
     private router: Router
   ) {}
 
-  canActivate(
+  async canActivate(
     route: ActivatedRouteSnapshot,
     state: RouterStateSnapshot
-  ): boolean {
+  ): Promise<boolean> {
+    // Wait for auth initialization to complete (session restoration from localStorage)
+    await this.authService.waitForInitialization();
+    
     if (this.authService.isAuthenticated()) {
       return true;
     }
