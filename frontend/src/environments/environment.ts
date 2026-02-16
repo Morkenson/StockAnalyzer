@@ -12,7 +12,7 @@ export const environment = {
   
   // Backend API Configuration
   api: {
-    baseUrl: 'http://localhost:5000/api' // .NET backend URL (use http for local development)
+    baseUrl: 'http://localhost:5000/api' // Python backend (use http for local development)
   },
   
   // Supabase Configuration

@@ -7,8 +7,6 @@
 .env.*.local
 *.env
 # Backend configuration files (may contain secrets)
-/backend/appsettings.Development.json
-/backend/appsettings.Production.json
 appsettings.Development.json
 appsettings.Production.json
 secrets.json
@@ -22,8 +20,6 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
-# Ignore package-lock.json in backend (not a Node.js project)
-/backend/package-lock.json
 # Note: frontend/package-lock.json should be tracked
 yarn.lock
 pnpm-lock.yaml
@@ -60,7 +56,18 @@ pnpm-lock.yaml
 !frontend/src/environments/environment.example.ts
 
 # ============================================
-# .NET / C#
+# Python
+# ============================================
+.venv/
+venv/
+env/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# ============================================
+# .NET / C# (legacy / IDE)
 # ============================================
 # Build results
 [Dd]ebug/
@@ -129,12 +136,10 @@ project.nuget.cache
 *.csproj.nuget.g.props
 *.csproj.nuget.g.targets
 
-# .NET Core build output
-/backend/**/bin/
-/backend/**/obj/
-/backend/**/out/
-# Old project structure (if still exists)
-/backend/StockAnalyzer.Api/
+# .NET Core build output (legacy)
+**/bin/
+**/obj/
+**/out/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
@@ -258,10 +263,6 @@ playwright/.cache/
 *.keystore
 *.orig
 *.rej
-*.pyc
-*.pyo
-*.pyd
-__pycache__/
 *.so
 *.dylib
 *.dll

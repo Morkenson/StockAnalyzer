@@ -45,6 +45,9 @@ import { Subscription } from 'rxjs';
             <a routerLink="/portfolio" routerLinkActive="active">
               Portfolio
             </a>
+            <a routerLink="/debt-calculator" routerLinkActive="active">
+              Debt Calculator
+            </a>
           </nav>
 
           <div class="auth-section">

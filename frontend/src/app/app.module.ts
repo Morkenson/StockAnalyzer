@@ -17,6 +17,7 @@ import { StockCardComponent } from './components/shared/stock-card.component';
 import { StockChartComponent } from './components/shared/stock-chart.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
+import { DebtCalculatorComponent } from './components/debt-calculator.component';
 import { GlobalErrorHandler } from './services/global-error-handler.service';
 
 @NgModule({
@@ -31,7 +32,8 @@ import { GlobalErrorHandler } from './services/global-error-handler.service';
     StockCardComponent,
     StockChartComponent,
     LoginComponent,
-    SignupComponent
+    SignupComponent,
+    DebtCalculatorComponent
   ],
   imports: [
     BrowserModule,

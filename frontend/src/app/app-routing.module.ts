@@ -7,6 +7,7 @@ import { WatchlistComponent } from './components/watchlist.component';
 import { PortfolioComponent } from './components/portfolio.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
+import { DebtCalculatorComponent } from './components/debt-calculator.component';
 import { AuthGuard } from './guards/auth.guard';
 
 const routes: Routes = [
@@ -18,6 +19,7 @@ const routes: Routes = [
   { path: 'stock/:symbol', component: StockDetailsComponent, canActivate: [AuthGuard] },
   { path: 'watchlist', component: WatchlistComponent, canActivate: [AuthGuard] },
   { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
+  { path: 'debt-calculator', component: DebtCalculatorComponent, canActivate: [AuthGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];
 
