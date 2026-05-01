@@ -1,7 +1,7 @@
 """Twelve Data API client for stock search, quotes, details, and historical data."""
 import logging
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -88,7 +88,7 @@ async def get_stock_quote(symbol: str, client: httpx.AsyncClient | None = None) 
         change=change,
         change_percent=change_pct,
         volume=volume,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
     )
 
 

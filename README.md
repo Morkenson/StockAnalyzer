@@ -13,8 +13,7 @@ Mork Wealth/
 |   |-- routers/
 |   |-- services/
 |   |-- tests/
-|   |-- requirements.txt
-|   `-- supabase_loans_schema.sql
+|   `-- requirements.txt
 |-- frontend/            # Angular app
 |   |-- app/
 |   |-- package.json

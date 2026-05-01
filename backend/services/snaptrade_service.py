@@ -110,12 +110,13 @@ async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
         {"userId": user_id, "userSecret": user_secret},
     )
     accounts = []
+    if isinstance(result, list):
+        for acc in result:
+            accounts.append(_parse_account(acc))
+        return accounts
     raw = result.get("accounts")
     if isinstance(raw, list):
         for acc in raw:
-            accounts.append(_parse_account(acc))
-    elif isinstance(result, list):
-        for acc in result:
             accounts.append(_parse_account(acc))
     return accounts
 

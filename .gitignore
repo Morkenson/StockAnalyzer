@@ -45,8 +45,6 @@ pnpm-lock.yaml
 *.ngfactory.ts
 *.ngsummary.json
 *.shim.ts
-*.spec.ts
-*.spec.js
 
 # Angular environment files
 # Note: Both environment.ts and environment.prod.ts should be committed
