@@ -27,6 +27,7 @@ def _frontend_origins() -> list[str]:
     origins = [
         "http://localhost:4200",
         "https://localhost:4200",
+        "https://mork-wealth.zachary-mork-portfolio.dev",
     ]
     configured = os.getenv("FRONTEND_ORIGINS", "")
     origins.extend(origin.strip() for origin in configured.split(",") if origin.strip())
@@ -73,7 +74,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_frontend_origins(),
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|.*\.vercel\.app",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.vercel\.app|https://.*\.zachary-mork-portfolio\.dev",
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"],
