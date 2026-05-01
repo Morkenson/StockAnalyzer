@@ -16,6 +16,12 @@ services:
       WATCHFILES_IGNORE_PERMISSION_DENIED: "true"
     ports:
       - "5000:5000"
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 5000 --proxy-headers
+      --reload --reload-dir /app
+      --reload-exclude pytest-cache-files-*
+      --reload-exclude .pytest_cache
+      --reload-exclude __pycache__
     volumes:
       - ./backend:/app
     depends_on:

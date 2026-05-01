@@ -13,4 +13,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--proxy-headers", "--reload", "--reload-dir", "/app", "--reload-exclude", "pytest-cache-files-*", "--reload-exclude", ".pytest_cache", "--reload-exclude", "__pycache__"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-5000} --proxy-headers"]
