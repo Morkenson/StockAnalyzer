@@ -21,17 +21,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 DB_KEEPALIVE_INTERVAL_SECONDS = 86400
+DEFAULT_FRONTEND_ORIGINS = [
+    "http://localhost:4200",
+    "https://localhost:4200",
+    "https://mork-wealth.zachary-mork-portfolio.dev",
+]
+CORS_ORIGIN_REGEX = (
+    r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+    r"|https://.*\.vercel\.app"
+    r"|https://.*\.zachary-mork-portfolio\.dev"
+)
 
 
 def _frontend_origins() -> list[str]:
-    origins = [
-        "http://localhost:4200",
-        "https://localhost:4200",
-        "https://mork-wealth.zachary-mork-portfolio.dev",
-    ]
+    origins = list(DEFAULT_FRONTEND_ORIGINS)
     configured = os.getenv("FRONTEND_ORIGINS", "")
     origins.extend(origin.strip() for origin in configured.split(",") if origin.strip())
-    return origins
+    return sorted(set(origins))
 
 
 def ping_database() -> None:
@@ -74,7 +80,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_frontend_origins(),
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.vercel\.app|https://.*\.zachary-mork-portfolio\.dev",
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"],
@@ -94,6 +100,15 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/cors-debug")
+async def cors_debug():
+    return {
+        "allowedOrigins": _frontend_origins(),
+        "allowOriginRegex": CORS_ORIGIN_REGEX,
+        "configuredFrontendOrigins": os.getenv("FRONTEND_ORIGINS", ""),
+    }
 
 
 @app.get("/api/keepalive")
