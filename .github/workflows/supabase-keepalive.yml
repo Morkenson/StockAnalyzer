@@ -1,0 +1,26 @@
+# Ping the backend keepalive endpoint daily so Supabase free tier stays active.
+# Add secret: KEEPALIVE_URL = full URL, e.g. https://your-backend.railway.app/api/keepalive
+name: Supabase keepalive
+on:
+  schedule:
+    - cron: '0 12 * * *'   # 12:00 UTC daily
+  workflow_dispatch:        # Run manually from Actions tab
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping keepalive endpoint
+        run: |
+          URL="${{ secrets.KEEPALIVE_URL }}"
+          if [ -z "$URL" ]; then
+            echo "KEEPALIVE_URL secret is not set. Add it in repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          echo "Response: $CODE"
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 400 ]; then
+            echo "Keepalive OK"
+          else
+            echo "Keepalive returned $CODE"
+            exit 1
+          fi

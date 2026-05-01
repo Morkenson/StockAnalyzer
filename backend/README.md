@@ -7,7 +7,7 @@ FastAPI backend for stock data (Twelve Data) and brokerage integration (SnapTrad
 1. **Create a virtual environment** (recommended):
 
    ```bash
-   cd backend_python
+   cd backend
    python -m venv .venv
    .venv\Scripts\activate   # Windows
    # source .venv/bin/activate   # macOS/Linux
@@ -21,7 +21,7 @@ FastAPI backend for stock data (Twelve Data) and brokerage integration (SnapTrad
 
 3. **Environment variables**
 
-   Create a `.env` file in the **project root** or in `backend_python`:
+   Create a `.env` file in the **project root** or in `backend`:
 
    ```env
    # Twelve Data (stock quotes, search, history)
@@ -36,7 +36,7 @@ FastAPI backend for stock data (Twelve Data) and brokerage integration (SnapTrad
 
 ## Run
 
-From the `backend_python` directory:
+From the `backend` directory:
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 5000 --reload

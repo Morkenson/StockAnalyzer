@@ -5,11 +5,14 @@ Replacement for the C# backend; same routes and response shape for the Angular f
 import logging
 import os
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pathlib import Path
 
+from config import SUPABASE_ANON_KEY, SUPABASE_URL
 from routers import stock, snaptrade
 
 # Load .env from project root or current dir
@@ -57,6 +60,36 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/keepalive")
+async def keepalive():
+    """Ping Supabase to keep free-tier project active. Call once per day via cron-job.org or UptimeRobot."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        logger.warning("keepalive: SUPABASE_URL or SUPABASE_ANON_KEY not set")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": "Supabase keepalive not configured (missing SUPABASE_URL or SUPABASE_ANON_KEY)",
+            },
+        )
+    url = f"{SUPABASE_URL}/rest/v1/"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers)
+        # Any response from Supabase means the project is reachable
+        return {"status": "ok", "supabase": "reachable"}
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        logger.warning("keepalive: Supabase ping failed: %s", e)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": "Supabase unreachable", "detail": str(e)},
+        )
 
 
 if __name__ == "__main__":
