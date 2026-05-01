@@ -11,25 +11,22 @@
         }
       },
       "root": "",
-      "sourceRoot": "src",
+      "sourceRoot": ".",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
           "options": {
             "outputPath": "dist/stock-analyzer",
-            "index": "src/index.html",
-            "main": "src/main.ts",
+            "index": "index.html",
+            "main": "main.ts",
             "polyfills": [
               "zone.js"
             ],
             "tsConfig": "tsconfig.app.json",
-            "assets": [
-              "src/favicon.ico",
-              "src/assets"
-            ],
+            "assets": [],
             "styles": [
-              "src/styles.scss"
+              "styles.scss"
             ],
             "scripts": []
           },
@@ -37,8 +34,8 @@
             "production": {
               "fileReplacements": [
                 {
-                  "replace": "src/environments/environment.ts",
-                  "with": "src/environments/environment.prod.ts"
+                  "replace": "environments/environment.ts",
+                  "with": "environments/environment.prod.ts"
                 }
               ],
               "budgets": [
@@ -77,27 +74,6 @@
             }
           },
           "defaultConfiguration": "development"
-        },
-        "test": {
-          "builder": "@angular-devkit/build-angular:karma",
-          "options": {
-            "polyfills": ["zone.js", "zone.js/testing"],
-            "tsConfig": "tsconfig.spec.json",
-            "inlineStyleLanguage": "scss",
-            "styles": ["src/styles.scss"],
-            "scripts": [],
-            "assets": ["src/favicon.ico", "src/assets"],
-            "watch": false,
-            "karmaConfig": "karma.conf.js"
-          },
-          "configurations": {
-            "ci": {
-              "progress": false,
-              "watch": false,
-              "codeCoverage": true,
-              "browsers": "ChromeHeadlessCI"
-            }
-          }
         }
       }
     }
@@ -106,4 +82,3 @@
     "analytics": "5e859c97-f453-4e2e-9e54-d5bbefed143e"
   }
 }
-

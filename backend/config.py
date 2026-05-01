@@ -19,7 +19,3 @@ SNAPTRADE_CONSUMER_KEY = os.getenv("SNAPTRADE_CONSUMER_KEY", "")
 # Twelve Data
 TWELVE_DATA_API_URL = os.getenv("TWELVE_DATA_API_URL", "https://api.twelvedata.com")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
-
-# Supabase (keepalive ping to prevent free-tier pause)
-SUPABASE_URL = (os.getenv("SUPABASE_URL", "") or "").rstrip("/")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")

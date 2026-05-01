@@ -1,0 +1,12 @@
+[run]
+source = .
+omit =
+    tests/*
+    */tests/*
+    .venv/*
+    venv/*
+    __pycache__/*
+
+[report]
+show_missing = true
+skip_empty = true

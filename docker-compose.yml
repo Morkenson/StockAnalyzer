@@ -1,0 +1,59 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENV: development
+      PORT: 5000
+      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://stockanalyzer:stockanalyzer@db:5432/stockanalyzer}
+      SNAPTRADE_API_URL: ${SNAPTRADE_API_URL:-https://api.snaptrade.com/api/v1}
+      SNAPTRADE_CLIENT_ID: ${SNAPTRADE_CLIENT_ID:-}
+      SNAPTRADE_CONSUMER_KEY: ${SNAPTRADE_CONSUMER_KEY:-}
+      TWELVE_DATA_API_URL: ${TWELVE_DATA_API_URL:-https://api.twelvedata.com}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
+      WATCHFILES_IGNORE_PERMISSION_DENIED: "true"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "4200:4200"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: stockanalyzer
+      POSTGRES_USER: stockanalyzer
+      POSTGRES_PASSWORD: stockanalyzer
+    ports:
+      - "5432:5432"
+    volumes:
+      - stockanalyzer-db:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockanalyzer -d stockanalyzer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  stockanalyzer-db:

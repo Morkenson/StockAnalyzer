@@ -28,6 +28,7 @@ pnpm-lock.yaml
 # Angular
 # ============================================
 .angular/
+/dist/
 /frontend/dist/
 /frontend/tmp/
 /frontend/out-tsc/
@@ -50,10 +51,10 @@ pnpm-lock.yaml
 # Angular environment files
 # Note: Both environment.ts and environment.prod.ts should be committed
 # They only contain URLs (localhost/production), no API keys or secrets
-/frontend/src/environments/environment.*.ts
-!frontend/src/environments/environment.ts
-!frontend/src/environments/environment.prod.ts
-!frontend/src/environments/environment.example.ts
+/frontend/environments/environment.*.ts
+!frontend/environments/environment.ts
+!frontend/environments/environment.prod.ts
+!frontend/environments/environment.example.ts
 
 # ============================================
 # Python
@@ -61,6 +62,8 @@ pnpm-lock.yaml
 .venv/
 venv/
 env/
+.pytest_cache/
+pytest-cache-files-*/
 *.pyc
 *.pyo
 *.pyd

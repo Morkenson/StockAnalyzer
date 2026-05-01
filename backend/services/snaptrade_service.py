@@ -1,4 +1,5 @@
 """SnapTrade API client for broker linking and portfolio data."""
+import asyncio
 import logging
 
 import httpx
@@ -13,20 +14,21 @@ _headers = {
     "X-Consumer-Key": SNAPTRADE_CONSUMER_KEY,
     "Content-Type": "application/json",
 }
+DEFAULT_TIMEOUT = httpx.Timeout(30.0)
 
 
 async def _aget(path: str, params: dict | None = None) -> dict:
     url = f"{SNAPTRADE_API_URL.rstrip('/')}{path}"
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, headers=_headers, params=params, timeout=30.0)
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        resp = await client.get(url, headers=_headers, params=params)
         resp.raise_for_status()
         return resp.json()
 
 
 async def _apost(path: str, json: dict) -> dict:
     url = f"{SNAPTRADE_API_URL.rstrip('/')}{path}"
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, headers=_headers, json=json, timeout=30.0)
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        resp = await client.post(url, headers=_headers, json=json)
         resp.raise_for_status()
         return resp.json()
 
@@ -77,10 +79,10 @@ def _parse_account(element: dict) -> Account:
 
 
 def _parse_holding(element: dict) -> Holding:
-    qty = float(element.get("quantity", 0) or 0)
-    avg = float(element.get("averagePurchasePrice", 0) or 0)
-    curr = float(element.get("currentPrice", 0) or 0)
-    total = float(element.get("totalValue", 0) or (qty * curr))
+    qty = _parse_float(element.get("quantity"))
+    avg = _parse_float(element.get("averagePurchasePrice"))
+    curr = _parse_float(element.get("currentPrice"))
+    total = _parse_float(element.get("totalValue"), qty * curr)
     gain_loss = total - (qty * avg)
     gain_pct = (gain_loss / (qty * avg) * 100) if (qty * avg) else 0
     return Holding(
@@ -93,6 +95,13 @@ def _parse_holding(element: dict) -> Holding:
         gain_loss_percent=gain_pct,
         currency=element.get("currency", "USD"),
     )
+
+
+def _parse_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value or default)
+    except (TypeError, ValueError):
+        return default
 
 
 async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
@@ -126,8 +135,15 @@ async def get_account_holdings(
 
 async def get_portfolio(user_id: str, user_secret: str) -> Portfolio:
     accounts = await get_accounts(user_id, user_secret)
-    for acc in accounts:
-        acc.holdings = await get_account_holdings(user_id, user_secret, acc.id)
+    holdings_results = await asyncio.gather(
+        *(get_account_holdings(user_id, user_secret, acc.id) for acc in accounts),
+        return_exceptions=True,
+    )
+    for acc, holdings in zip(accounts, holdings_results):
+        if isinstance(holdings, Exception):
+            logger.warning("Holdings failed for account %s: %s", acc.id, holdings)
+            continue
+        acc.holdings = holdings
     total_balance = sum(a.balance or 0 for a in accounts)
     total_gain_loss = sum(sum(h.gain_loss for h in a.holdings) for a in accounts)
     total_gain_loss_percent = (

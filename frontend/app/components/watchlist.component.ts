@@ -1,0 +1,403 @@
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { StockService } from '../services/stock.service';
+import { WatchlistService } from '../services/watchlist.service';
+import { WatchlistItem, StockQuote, Watchlist } from '../models/stock.model';
+import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'app-watchlist',
+  template: `
+    <div class="watchlist">
+      <div class="watchlist-header">
+        <div class="header-left">
+          <div class="watchlist-selector-wrapper">
+            <h1>Watchlists</h1>
+            <div class="watchlist-controls">
+              <select 
+                class="watchlist-select"
+                [value]="selectedWatchlistId || ''"
+                (change)="onWatchlistChange($event)"
+                *ngIf="watchlists.length > 0">
+                <option *ngFor="let wl of watchlists" [value]="wl.id">
+                  {{ wl.name }}{{ wl.isDefault ? ' (Default)' : '' }}
+                </option>
+              </select>
+              <button 
+                class="btn btn-secondary btn-sm"
+                (click)="showCreateModal = true"
+                title="Create new watchlist">
+                + New
+              </button>
+              <button 
+                *ngIf="selectedWatchlist"
+                class="btn btn-secondary btn-sm"
+                (click)="openEditModal()"
+                title="Edit watchlist">
+                Edit
+              </button>
+              <button 
+                *ngIf="selectedWatchlist && !selectedWatchlist.isDefault"
+                class="btn btn-secondary btn-sm btn-danger"
+                (click)="deleteWatchlist()"
+                title="Delete watchlist">
+                Delete
+              </button>
+            </div>
+          </div>
+          
+        </div>
+        <button 
+          *ngIf="selectedWatchlist && watchlistItems.length > 0" 
+          class="btn btn-primary"
+          routerLink="/search">
+          + Add Stocks
+        </button>
+      </div>
+      
+      <!-- Create Watchlist Modal -->
+      <div class="modal-overlay" *ngIf="showCreateModal" (click)="showCreateModal = false">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h2>Create New Watchlist</h2>
+            <button class="modal-close" (click)="showCreateModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Name *</label>
+              <input type="text" [(ngModel)]="newWatchlistName" placeholder="e.g., Tech Stocks" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea [(ngModel)]="newWatchlistDescription" placeholder="Optional description" class="form-control" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" [(ngModel)]="newWatchlistIsDefault">
+                Set as default watchlist
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" (click)="showCreateModal = false">Cancel</button>
+            <button class="btn btn-primary" (click)="createWatchlist()" [disabled]="!newWatchlistName.trim()">Create</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Edit Watchlist Modal -->
+      <div class="modal-overlay" *ngIf="showEditModal && selectedWatchlist" (click)="showEditModal = false">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h2>Edit Watchlist</h2>
+            <button class="modal-close" (click)="showEditModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Name *</label>
+              <input type="text" [(ngModel)]="editWatchlistName" placeholder="Watchlist name" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea [(ngModel)]="editWatchlistDescription" placeholder="Optional description" class="form-control" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" [(ngModel)]="editWatchlistIsDefault">
+                Set as default watchlist
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" (click)="showEditModal = false">Cancel</button>
+            <button class="btn btn-primary" (click)="updateWatchlist()" [disabled]="!editWatchlistName.trim()">Save</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Empty state when no watchlists exist -->
+      <div class="card" *ngIf="watchlists.length === 0 && !loading">
+        <div class="empty-state">
+          <div class="empty-state-icon">⭐</div>
+          <h3>No watchlists yet</h3>
+          <p>Create your first watchlist to start tracking stocks</p>
+          <button class="btn btn-primary" (click)="showCreateModal = true">Create Watchlist</button>
+        </div>
+      </div>
+      
+      <div class="card" *ngIf="selectedWatchlist && watchlistItems.length === 0">
+        <div class="empty-state">
+          <div class="empty-state-icon">⭐</div>
+          <h3>{{ selectedWatchlist.name }} is empty</h3>
+          <p>Search for stocks and add them to this watchlist to track them here</p>
+          <button class="btn btn-primary" routerLink="/search">Search Stocks</button>
+        </div>
+      </div>
+
+      <div *ngIf="selectedWatchlist && watchlistItems.length > 0" class="card watchlist-card">
+        <div class="card-header">
+          <span>{{ selectedWatchlist.name }}</span>
+          
+        </div>
+        
+        <div *ngIf="loading" class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading watchlist data...</p>
+        </div>
+        
+        <div *ngIf="!loading && stockQuotes.length > 0" class="table-wrapper">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Price</th>
+                <th>Change</th>
+                <th>Change %</th>
+                <th>Volume</th>
+                <th>Added</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let quote of stockQuotes; let i = index" 
+                  class="watchlist-row" 
+                  (click)="viewStock(quote.symbol)"
+                  [attr.aria-label]="'View details for ' + quote.symbol">
+                <td>
+                  <strong>{{ quote.symbol }}</strong>
+                </td>
+                <td class="price-cell">
+                  <span class="price-value">{{ '$' + (quote.price | number:'1.2-2') }}</span>
+                </td>
+                <td>
+                  <span class="change-value" [class.positive]="quote.change >= 0" [class.negative]="quote.change < 0">
+                    {{ quote.change >= 0 ? '+' : '' }}{{ quote.change | number:'1.2-2' }}
+                  </span>
+                </td>
+                <td>
+                  <span class="change-percent" [class.positive]="quote.changePercent >= 0" [class.negative]="quote.changePercent < 0">
+                    {{ quote.changePercent >= 0 ? '+' : '' }}{{ quote.changePercent | number:'1.2-2' }}%
+                  </span>
+                </td>
+                <td class="volume-cell">{{ quote.volume | number }}</td>
+                <td class="date-cell">{{ getAddedDate(quote.symbol) | date:'MMM d, y' }}</td>
+                <td class="actions-cell" (click)="$event.stopPropagation()">
+                  <button 
+                    class="btn btn-secondary btn-sm" 
+                    (click)="removeFromWatchlist(quote.symbol)"
+                    [attr.aria-label]="'Remove ' + quote.symbol + ' from watchlist'">
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div *ngIf="!loading && stockQuotes.length === 0 && watchlistItems.length > 0" class="empty-state">
+          <div class="empty-state-icon">⚠️</div>
+          <p>{{ errorMessage || 'Unable to load stock data. Please try refreshing.' }}</p>
+          <button class="btn btn-primary" (click)="loadWatchlist()">Retry</button>
+        </div>
+      </div>
+    </div>
+  `,
+  styleUrls: ['../styles/components/watchlist.component.scss']
+})
+export class WatchlistComponent implements OnInit, OnDestroy {
+  watchlists: Watchlist[] = [];
+  selectedWatchlist: Watchlist | null = null;
+  selectedWatchlistId: string | null = null;
+  watchlistItems: WatchlistItem[] = [];
+  stockQuotes: StockQuote[] = [];
+  loading = false;
+  errorMessage: string | null = null;
+  private quoteRequestId = 0;
+  
+  // Modal states
+  showCreateModal = false;
+  showEditModal = false;
+  newWatchlistName = '';
+  newWatchlistDescription = '';
+  newWatchlistIsDefault = false;
+  editWatchlistName = '';
+  editWatchlistDescription = '';
+  editWatchlistIsDefault = false;
+  
+  private subscriptions = new Subscription();
+
+  constructor(
+    private watchlistService: WatchlistService,
+    private stockService: StockService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Subscribe to watchlists
+    this.subscriptions.add(
+      this.watchlistService.getWatchlists().subscribe(watchlists => {
+        this.watchlists = watchlists;
+        // Update selected watchlist reference when watchlists change
+        if (this.selectedWatchlistId) {
+          this.selectedWatchlist = this.watchlists.find(w => w.id === this.selectedWatchlistId) || null;
+        }
+      })
+    );
+    
+    // Subscribe to selected watchlist ID
+    this.subscriptions.add(
+      this.watchlistService.selectedWatchlistId$.subscribe(id => {
+        this.selectedWatchlistId = id;
+        this.selectedWatchlist = this.watchlists.find(w => w.id === id) || null;
+      })
+    );
+    
+    // Load quotes whenever the selected watchlist items change
+    this.subscriptions.add(
+      this.watchlistService.getWatchlist().subscribe(items => {
+        this.watchlistItems = items;
+        this.loadQuotesForItems(items);
+      })
+    );
+  }
+  
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
+  
+  onWatchlistChange(event: Event): void {
+    const selectElement = event.target as HTMLSelectElement;
+    const watchlistId = selectElement.value;
+    if (watchlistId) {
+      this.watchlistService.selectWatchlist(watchlistId);
+    }
+  }
+  
+  async createWatchlist(): Promise<void> {
+    if (!this.newWatchlistName.trim()) {
+      return;
+    }
+    
+    try {
+      await this.watchlistService.createWatchlist(
+        this.newWatchlistName.trim(),
+        this.newWatchlistDescription.trim() || undefined,
+        this.newWatchlistIsDefault
+      );
+      this.showCreateModal = false;
+      this.newWatchlistName = '';
+      this.newWatchlistDescription = '';
+      this.newWatchlistIsDefault = false;
+    } catch (error) {
+      console.error('Error creating watchlist:', error);
+      this.errorMessage = 'Failed to create watchlist. Please try again.';
+    }
+  }
+  
+  async updateWatchlist(): Promise<void> {
+    if (!this.selectedWatchlist || !this.editWatchlistName.trim()) {
+      return;
+    }
+    
+    try {
+      await this.watchlistService.updateWatchlist(this.selectedWatchlist.id, {
+        name: this.editWatchlistName.trim(),
+        description: this.editWatchlistDescription.trim() || undefined,
+        isDefault: this.editWatchlistIsDefault
+      });
+      this.showEditModal = false;
+    } catch (error) {
+      console.error('Error updating watchlist:', error);
+      this.errorMessage = 'Failed to update watchlist. Please try again.';
+    }
+  }
+  
+  async deleteWatchlist(): Promise<void> {
+    if (!this.selectedWatchlist || this.selectedWatchlist.isDefault) {
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete "${this.selectedWatchlist.name}"? This will also remove all stocks in this watchlist.`)) {
+      return;
+    }
+    
+    try {
+      await this.watchlistService.deleteWatchlist(this.selectedWatchlist.id);
+    } catch (error) {
+      console.error('Error deleting watchlist:', error);
+      this.errorMessage = 'Failed to delete watchlist. Please try again.';
+    }
+  }
+  
+  openEditModal(): void {
+    if (this.selectedWatchlist) {
+      this.editWatchlistName = this.selectedWatchlist.name;
+      this.editWatchlistDescription = this.selectedWatchlist.description || '';
+      this.editWatchlistIsDefault = this.selectedWatchlist.isDefault;
+      this.showEditModal = true;
+    }
+  }
+
+  loadWatchlist(): void {
+    this.loadQuotesForItems(this.watchlistItems);
+  }
+
+  private loadQuotesForItems(items: WatchlistItem[]): void {
+    const requestId = ++this.quoteRequestId;
+    this.loading = true;
+    this.errorMessage = null;
+    if (items.length === 0) {
+      this.stockQuotes = [];
+      this.loading = false;
+      return;
+    }
+
+    const symbols = items.map(item => item.symbol.toUpperCase());
+    this.subscriptions.add(this.stockService.getMultipleQuotes(symbols).subscribe({
+      next: (quotes) => {
+        if (requestId !== this.quoteRequestId) {
+          return;
+        }
+
+        this.stockQuotes = symbols
+          .map(symbol => quotes.find(q => q.symbol.toUpperCase() === symbol))
+          .filter((q): q is StockQuote => q !== undefined);
+
+        if (this.stockQuotes.length === 0) {
+          this.errorMessage = 'Unable to fetch stock data. Please check your connection and try again.';
+        }
+
+        this.loading = false;
+      },
+      error: (error) => {
+        if (requestId !== this.quoteRequestId) {
+          return;
+        }
+
+        console.error('Error loading stock quotes:', error);
+        this.errorMessage = 'Error loading stock data. Please try refreshing the page.';
+        this.stockQuotes = [];
+        this.loading = false;
+      }
+    }));
+  }
+
+  viewStock(symbol: string): void {
+    this.router.navigate(['/stock', symbol]);
+  }
+
+  async removeFromWatchlist(symbol: string): Promise<void> {
+    try {
+      await this.watchlistService.removeFromWatchlist(symbol);
+      this.loadWatchlist();
+    } catch (error) {
+      console.error('Error removing from watchlist:', error);
+    }
+  }
+
+  getAddedDate(symbol: string): Date {
+    const item = this.watchlistItems.find(i => i.symbol === symbol);
+    return item ? item.addedDate : new Date();
+  }
+}
+

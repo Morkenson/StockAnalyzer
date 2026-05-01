@@ -1,67 +1,73 @@
-# StockAnalyzer
+# Mork Wealth
 
-A stock analysis app with an **Angular** frontend and **Python (FastAPI)** backend, plus SnapTrade for brokerage linking.
+Angular frontend, FastAPI backend, and SQLAlchemy-backed persistence. The database is configured with `DATABASE_URL`, so it can be local Postgres, Supabase Postgres, or any normal PostgreSQL provider.
 
-## Project structure
+## Structure
 
-```
-StockAnalyzer/
-├── backend/             # API (FastAPI) – stock data, SnapTrade
-│   ├── main.py         # App entry, CORS, routes
-│   ├── config.py       # Env (Twelve Data, SnapTrade)
-│   ├── models/         # Pydantic models
-│   ├── routers/        # /api/stock, /api/snaptrade
-│   ├── services/       # HTTP clients, user store
-│   ├── requirements.txt
-│   └── README.md
-├── frontend/           # Angular app
-│   ├── src/app/
-│   │   ├── components/  # Dashboard, watchlist, portfolio, etc.
-│   │   ├── services/    # API and Supabase
-│   │   ├── models/
-│   │   └── ...
-│   └── ...
-├── .gitignore
-├── vercel.json         # Frontend deploy (Vercel)
-└── README.md
+```text
+Mork Wealth/
+|-- backend/             # FastAPI API for auth, user data, stocks, SnapTrade
+|   |-- main.py
+|   |-- config.py
+|   |-- models/
+|   |-- routers/
+|   |-- services/
+|   |-- tests/
+|   |-- requirements.txt
+|   `-- supabase_loans_schema.sql
+|-- frontend/            # Angular app
+|   |-- app/
+|   |-- package.json
+|   `-- angular.json
+|-- .github/workflows/
+|-- vercel.json
+`-- README.md
 ```
 
-## Run locally
+## Local Dev
 
-1. **Backend** (from repo root):
+Backend:
 
-   ```bash
-   cd backend
-   python -m venv .venv
-   .venv\Scripts\activate    # Windows
-   pip install -r requirements.txt
-   # Add .env with TWELVE_DATA_API_KEY (see backend/README.md)
-   uvicorn main:app --host 0.0.0.0 --port 5000 --reload
-   ```
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 5000 --reload
+```
 
-2. **Frontend** (in another terminal):
+Frontend:
 
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
+```bash
+cd frontend
+npm install
+npm start
+```
 
-3. Open **http://localhost:4200**. The app uses the API at **http://localhost:5000/api**.
+Open http://localhost:4200. The frontend calls http://localhost:5000/api.
+
+## Auth
+
+Auth is owned by the FastAPI backend. Signup/signin create a signed JWT in an HttpOnly cookie, and protected app-data routes derive the user from that cookie. Password reset tokens are stored hashed in the database. Set `JWT_SECRET` to a long random value before deploying.
 
 ## Deploy
 
-- **Frontend:** Vercel (see `vercel.json`). Set `API_BASE_URL` for production if your API is elsewhere.
-- **Backend:** Deploy `backend` (e.g. Railway, Render, Fly.io) and point the frontend’s production `api.baseUrl` to that URL.
+- Frontend: Vercel. `vercel.json` builds from `frontend/`.
+- Backend: deploy `backend/` to a Python host such as Railway, Render, or Fly.io.
+- Set the frontend `API_BASE_URL` to your deployed backend API URL.
 
-### Supabase keepalive (free tier)
+## Docker
 
-To prevent Supabase from pausing the project after inactivity:
+```bash
+docker compose up --build
+```
 
-1. **Backend:** Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in your backend’s environment. The `/api/keepalive` route will ping Supabase when called.
+Frontend: http://localhost:4200
+Backend: http://localhost:5000
+API docs: http://localhost:5000/docs
 
-2. **Daily ping** (choose one):
+## Database Keepalive
 
-   - **GitHub Actions** (included): In the repo go to **Settings → Secrets and variables → Actions**, add a secret `KEEPALIVE_URL` with your full keepalive URL (e.g. `https://your-backend.railway.app/api/keepalive`). The workflow [.github/workflows/supabase-keepalive.yml](.github/workflows/supabase-keepalive.yml) runs daily at 12:00 UTC. You can also run it manually from the **Actions** tab.
+The backend owns keepalive. On startup it runs a background task that executes `SELECT 1` through SQLAlchemy using `DATABASE_URL`, then repeats once per day.
 
-   - **cron-job.org / UptimeRobot:** Create a free job or monitor that requests `https://<your-backend-url>/api/keepalive` once per day. No auth or custom headers.
+You can also manually check it at `GET /api/keepalive`.

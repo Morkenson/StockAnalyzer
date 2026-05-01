@@ -1,5 +1,6 @@
 """Twelve Data API client for stock search, quotes, details, and historical data."""
 import logging
+import asyncio
 from datetime import datetime
 from typing import Any
 from urllib.parse import quote_plus
@@ -15,13 +16,14 @@ from models.stock_models import (
 )
 
 logger = logging.getLogger(__name__)
+DEFAULT_TIMEOUT = httpx.Timeout(10.0)
 
 
 async def search_stocks(query: str) -> list[StockSearchResult]:
     if not query or not query.strip():
         return []
     url = f"{TWELVE_DATA_API_URL}/symbol_search?symbol={quote_plus(query.strip())}&apikey={TWELVE_DATA_API_KEY}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         resp = await client.get(url)
         resp.raise_for_status()
     data = resp.json()
@@ -60,11 +62,15 @@ def _parse_int(val: Any, default: int = 0) -> int:
         return default
 
 
-async def get_stock_quote(symbol: str) -> StockQuote | None:
+async def get_stock_quote(symbol: str, client: httpx.AsyncClient | None = None) -> StockQuote | None:
     url = f"{TWELVE_DATA_API_URL}/quote?symbol={quote_plus(symbol)}&apikey={TWELVE_DATA_API_KEY}"
-    async with httpx.AsyncClient() as client:
+    if client:
         resp = await client.get(url)
         resp.raise_for_status()
+    else:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as owned_client:
+            resp = await owned_client.get(url)
+            resp.raise_for_status()
     result = resp.json()
     if result.get("status") == "error":
         return None
@@ -98,7 +104,7 @@ async def get_stock_details(symbol: str) -> StockDetails | None:
         volume=quote.volume,
     )
     profile_url = f"{TWELVE_DATA_API_URL}/profile?symbol={quote_plus(symbol)}&apikey={TWELVE_DATA_API_KEY}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         profile_resp = await client.get(profile_url)
     if profile_resp.is_success:
         profile = profile_resp.json()
@@ -132,9 +138,10 @@ async def get_stock_details(symbol: str) -> StockDetails | None:
 
 
 async def get_multiple_stock_quotes(symbols: list[str]) -> list[StockQuote]:
-    import asyncio
-    tasks = [get_stock_quote(s) for s in symbols]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    unique_symbols = list(dict.fromkeys(s.strip().upper() for s in symbols if s and s.strip()))
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        tasks = [get_stock_quote(symbol, client) for symbol in unique_symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
     quotes = []
     for r in results:
         if isinstance(r, StockQuote):
@@ -152,7 +159,7 @@ async def get_historical_data(
     if output_size is None:
         output_size = {"1day": 30, "1week": 12, "1month": 12}.get(interval, 30)
     url = f"{TWELVE_DATA_API_URL}/time_series?symbol={quote_plus(symbol)}&interval={interval}&outputsize={output_size}&apikey={TWELVE_DATA_API_KEY}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         resp = await client.get(url)
         resp.raise_for_status()
     result = resp.json()
