@@ -5,6 +5,7 @@ from datetime import datetime
 
 from main import app
 from models.stock_models import StockQuote, StockSearchResult, StockHistoricalData
+from services.stock_data_service import StockDataConfigurationError
 
 client = TestClient(app)
 
@@ -48,6 +49,15 @@ class TestGetStockQuote:
         with patch("routers.stock.stock_svc.get_stock_quote", new=AsyncMock(side_effect=Exception("Timeout"))):
             resp = client.get("/api/stock/quote/AAPL")
         assert resp.status_code == 400
+
+    def test_missing_provider_config_returns_503(self):
+        with patch(
+            "routers.stock.stock_svc.get_stock_quote",
+            new=AsyncMock(side_effect=StockDataConfigurationError("TWELVE_DATA_API_KEY is not configured")),
+        ):
+            resp = client.get("/api/stock/quote/AAPL")
+        assert resp.status_code == 503
+        assert "TWELVE_DATA_API_KEY" in resp.json()["message"]
 
 
 class TestGetMultipleQuotes:

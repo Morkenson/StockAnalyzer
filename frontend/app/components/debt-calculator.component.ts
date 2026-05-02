@@ -16,10 +16,16 @@ interface PaymentScheduleEntry {
   selector: 'app-debt-calculator',
   template: `
     <div class="debt-calculator">
-      <div class="calculator-header">
-        <h1>Debt Calculator</h1>
-        <p class="calculator-subtitle">Calculate your loan payments and manage your debts</p>
-      </div>
+      <section class="page-hero debt-hero">
+        <div>
+          <p class="page-kicker">Planning</p>
+          <h1>Debt Calculator</h1>
+          <p class="calculator-subtitle">Estimate payments, compare payoff options, and save loans.</p>
+        </div>
+        <button type="button" class="btn btn-primary" (click)="openCalculator()">
+          Add Loan
+        </button>
+      </section>
 
       <!-- Calculator section: shown when Add Loan is clicked or when editing -->
       <div class="calculator-section" *ngIf="showCalculator || editingLoanId">
@@ -184,9 +190,12 @@ interface PaymentScheduleEntry {
       <!-- End calculator section -->
 
       <!-- Totals at top -->
-      <div class="card totals-card">
+      <section class="card totals-card">
         <div class="card-header">
-          <span>Totals</span>
+          <div>
+            <span>Loan Snapshot</span>
+            <p>Combined totals across saved loans</p>
+          </div>
         </div>
         <div class="aggregate-totals">
           <div class="total-item">
@@ -214,17 +223,17 @@ interface PaymentScheduleEntry {
             <span class="total-value">\${{ totalWeeklyInterest | number:'1.2-2' }}</span>
           </div>
         </div>
-      </div>
+      </section>
 
       <!-- Main screen: Saved Loans list -->
-      <div class="card saved-loans-card">
+      <section class="card saved-loans-card">
         <div class="card-header saved-loans-header">
           <div class="saved-loans-title">
             <span>Saved Loans</span>
             <span class="card-badge" *ngIf="loans.length > 0">{{ loans.length }}</span>
           </div>
           <button type="button" class="btn btn-primary" (click)="openCalculator()">
-            + Add Loan
+            Add Loan
           </button>
         </div>
         <div class="loans-list" *ngIf="loans.length > 0">
@@ -281,9 +290,9 @@ interface PaymentScheduleEntry {
         </div>
         <div class="empty-loans" *ngIf="loans.length === 0">
           <p class="empty-loans-message">No loans yet. Add a loan to track your debt and see totals.</p>
-          <button type="button" class="btn btn-primary" (click)="openCalculator()">+ Add Loan</button>
+          <button type="button" class="btn btn-primary" (click)="openCalculator()">Add Loan</button>
         </div>
-      </div>
+      </section>
 
       <div class="card payment-options-card" *ngIf="(showCalculator || editingLoanId) && monthlyPayment > 0">
         <div class="card-header">
@@ -358,7 +367,6 @@ interface PaymentScheduleEntry {
       </div>
     </div>
   `,
-  styleUrls: ['../styles/components/debt-calculator.component.scss']
 })
 export class DebtCalculatorComponent implements OnInit, OnDestroy {
   calculatorForm: FormGroup;

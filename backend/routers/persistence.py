@@ -16,9 +16,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from db_models import AppUser, Loan, PasswordResetToken, Watchlist, WatchlistItem
+from db_models import AppUser, Asset, Loan, PasswordResetToken, Watchlist, WatchlistItem
 from models.common import ApiResponse
 from models.persistence_models import (
+    AssetCreate,
+    AssetUpdate,
     AuthCredentials,
     LoanCreate,
     LoanUpdate,
@@ -150,6 +152,19 @@ def _loan_row(loan: Loan) -> dict:
         "notes": loan.notes,
         "createdAt": _iso(loan.created_at),
         "updatedAt": _iso(loan.updated_at),
+    }
+
+
+def _asset_row(asset: Asset) -> dict:
+    return {
+        "id": asset.id,
+        "name": asset.name,
+        "assetType": asset.asset_type,
+        "value": _number(asset.value),
+        "institution": asset.institution,
+        "notes": asset.notes,
+        "createdAt": _iso(asset.created_at),
+        "updatedAt": _iso(asset.updated_at),
     }
 
 
@@ -305,6 +320,68 @@ async def delete_loan(loan_id: str, user: AppUser = Depends(_current_user), db: 
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
     db.delete(loan)
+    db.commit()
+    return ApiResponse(success=True).model_dump(by_alias=True)
+
+
+@router.get("/assets")
+async def get_assets(user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
+    assets = db.scalars(select(Asset).where(Asset.user_id == user.id).order_by(Asset.created_at.desc())).all()
+    return ApiResponse(success=True, data=[_asset_row(asset) for asset in assets]).model_dump(by_alias=True)
+
+
+@router.post("/assets", status_code=status.HTTP_201_CREATED)
+async def create_asset(payload: AssetCreate, user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
+    if payload.value < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset value must be 0 or greater")
+    asset = Asset(
+        user_id=user.id,
+        name=payload.name.strip(),
+        asset_type=payload.asset_type.strip(),
+        value=payload.value,
+        institution=payload.institution.strip() if payload.institution else None,
+        notes=payload.notes.strip() if payload.notes else None,
+    )
+    if not asset.name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset name is required")
+    if not asset.asset_type:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset type is required")
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return ApiResponse(success=True, data=_asset_row(asset)).model_dump(by_alias=True)
+
+
+@router.patch("/assets/{asset_id}")
+async def update_asset(
+    asset_id: str,
+    payload: AssetUpdate,
+    user: AppUser = Depends(_current_user),
+    db: Session = Depends(get_db),
+):
+    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("value") is not None and updates["value"] < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset value must be 0 or greater")
+    for key, value in updates.items():
+        setattr(asset, key, value.strip() if isinstance(value, str) else value)
+    if not asset.name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset name is required")
+    if not asset.asset_type:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Asset type is required")
+    db.commit()
+    db.refresh(asset)
+    return ApiResponse(success=True, data=_asset_row(asset)).model_dump(by_alias=True)
+
+
+@router.delete("/assets/{asset_id}")
+async def delete_asset(asset_id: str, user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
+    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    db.delete(asset)
     db.commit()
     return ApiResponse(success=True).model_dump(by_alias=True)
 

@@ -7,21 +7,30 @@ import { Router } from '@angular/router';
   selector: 'app-portfolio',
   template: `
     <div class="portfolio">
-      <div class="portfolio-header">
-        <h1>My Portfolio</h1>
+      <section class="page-hero portfolio-hero">
+        <div>
+          <p class="page-kicker">Portfolio</p>
+          <h1>{{ portfolio ? (portfolio.currency + (portfolio.totalBalance | number:'1.2-2')) : 'My Portfolio' }}</h1>
+          <p class="page-subtitle">{{ portfolio ? 'Your connected accounts in one place.' : 'Connect a brokerage account to see your investments.' }}</p>
+        </div>
         <div class="header-actions">
           <button class="btn btn-secondary" (click)="initiateAccountLinking()" [disabled]="linkingAccount">
-            {{ linkingAccount ? 'Connecting...' : 'Connect Account' }}
+            {{ linkingAccount ? 'Connecting...' : (portfolio ? 'Connect another account' : 'Connect account') }}
           </button>
           <button class="btn btn-primary" (click)="refreshPortfolio()" [disabled]="loading">
             {{ loading ? 'Refreshing...' : 'Refresh' }}
           </button>
         </div>
-      </div>
+      </section>
 
       <!-- Portfolio Overview -->
-      <div class="card" *ngIf="portfolio">
-        <div class="card-header">Portfolio Overview</div>
+      <section class="card" *ngIf="portfolio">
+        <div class="card-header">
+          <div>
+            <span>Overview</span>
+            <p>Balance and performance summary</p>
+          </div>
+        </div>
         <div class="portfolio-summary">
           <div class="summary-item">
             <label>Total Balance</label>
@@ -46,7 +55,7 @@ import { Router } from '@angular/router';
             <div class="value">{{ (portfolio.accounts && portfolio.accounts.length) || 0 }}</div>
           </div>
         </div>
-      </div>
+      </section>
 
       <!-- Loading State -->
       <div class="card" *ngIf="loading && !portfolio">
@@ -77,21 +86,25 @@ import { Router } from '@angular/router';
       </div>
 
       <!-- Accounts List -->
-      <div *ngIf="portfolio && portfolio.accounts && portfolio.accounts.length > 0">
+      <section class="accounts-section" *ngIf="portfolio && portfolio.accounts && portfolio.accounts.length > 0">
+        <div class="section-heading">
+          <h2>Accounts</h2>
+          <p>{{ portfolio.accounts.length }} connected {{ portfolio.accounts.length === 1 ? 'account' : 'accounts' }}</p>
+        </div>
         <div class="card" *ngFor="let account of portfolio.accounts; let i = index">
           <div class="account-header" (click)="toggleAccount(i)">
             <div class="account-info">
               <h3>{{ account.name }}</h3>
               <p class="account-meta">
-                {{ account.accountNumber }} • {{ account.type }}
+                {{ account.accountNumber }} / {{ account.type }}
                 <span *ngIf="account.balance !== undefined">
-                  • {{ account.currency }}{{ account.balance | number:'1.2-2' }}
+                  / {{ account.currency }}{{ account.balance | number:'1.2-2' }}
                 </span>
               </p>
             </div>
             <div class="account-actions">
               <span class="expand-icon" [class.expanded]="expandedAccounts[i]">
-                ▼
+                V
               </span>
             </div>
           </div>
@@ -155,10 +168,9 @@ import { Router } from '@angular/router';
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   `,
-  styleUrls: ['../styles/components/portfolio.component.scss']
 })
 export class PortfolioComponent implements OnInit {
   portfolio: Portfolio | null = null;
@@ -193,6 +205,12 @@ export class PortfolioComponent implements OnInit {
         }
       },
       error: (err) => {
+        if (err.status === 404) {
+          this.portfolio = null;
+          this.error = null;
+          this.loading = false;
+          return;
+        }
         this.error = err.error?.message || err.message || 'Failed to load portfolio. Please check your SnapTrade connection.';
         this.loading = false;
         console.error('Error loading portfolio:', err);

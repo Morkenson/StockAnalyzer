@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
 from main import app
-from models.snaptrade_models import Account, Portfolio, Brokerage, Holding
+from models.snaptrade_models import Account, Portfolio, Brokerage, Holding, SnapTradeUser
 
 client = TestClient(app)
 HEADERS = {"X-User-Id": "user1"}
@@ -28,6 +28,37 @@ class TestGetPortfolio:
                 resp = client.get("/api/snaptrade/portfolio", headers=HEADERS)
         assert resp.status_code == 200
         assert resp.json()["success"] is True
+
+
+class TestInitiateConnection:
+    def test_creates_user_and_stores_returned_secret(self):
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value=None)):
+            with patch("routers.snaptrade.user_svc.store_user_secret", new=AsyncMock()) as store_secret:
+                with patch(
+                    "routers.snaptrade.snaptrade_svc.create_user",
+                    new=AsyncMock(return_value=SnapTradeUser(user_id="user1", user_secret="real-secret")),
+                ):
+                    with patch(
+                        "routers.snaptrade.snaptrade_svc.initiate_connection",
+                        new=AsyncMock(return_value="https://login.example"),
+                    ) as initiate:
+                        resp = client.post("/api/snaptrade/connect/initiate", headers={**HEADERS, "Origin": "http://localhost:4200"})
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["redirectUri"] == "https://login.example"
+        store_secret.assert_awaited_once_with("user1", "real-secret")
+        initiate.assert_awaited_once_with("user1", "real-secret", "http://localhost:4200/portfolio")
+
+    def test_rejects_missing_user_secret_from_snaptrade(self):
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value=None)):
+            with patch(
+                "routers.snaptrade.snaptrade_svc.create_user",
+                new=AsyncMock(return_value=SnapTradeUser(user_id="user1")),
+            ):
+                resp = client.post("/api/snaptrade/connect/initiate", headers=HEADERS)
+
+        assert resp.status_code == 400
+        assert "user secret" in resp.json()["message"]
 
 
 class TestGetAccounts:

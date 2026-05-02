@@ -16,7 +16,6 @@ import { StockHistoricalData } from '../../models/stock.model';
       </canvas>
     </div>
   `,
-  styleUrls: ['../../styles/components/shared/stock-chart.component.scss']
 })
 export class StockChartComponent implements OnInit, OnChanges {
   @Input() historicalData: StockHistoricalData[] = [];

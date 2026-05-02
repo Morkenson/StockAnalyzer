@@ -7,10 +7,15 @@ import { AuthService } from '../services/auth.service';
   selector: 'app-login',
   template: `
     <div class="login-container">
+      <section class="auth-story">
+        <p class="page-kicker">Mork Wealth</p>
+        <h1>Your money, clearer.</h1>
+        <p>Track stocks, watchlists, portfolios, and payoff plans from one calm workspace.</p>
+      </section>
       <div class="login-card">
         <div class="login-header">
-          <h1>Welcome Back</h1>
-          <p>Sign in to your account to continue</p>
+          <h1>Welcome back</h1>
+          <p>Sign in to continue.</p>
         </div>
 
         <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="login-form">
@@ -69,7 +74,6 @@ import { AuthService } from '../services/auth.service';
       </div>
     </div>
   `,
-  styleUrls: ['../styles/components/login.component.scss']
 })
 export class LoginComponent implements OnInit {
   loginForm!: FormGroup;

@@ -7,10 +7,15 @@ import { AuthService } from '../services/auth.service';
   selector: 'app-signup',
   template: `
     <div class="signup-container">
+      <section class="auth-story">
+        <p class="page-kicker">Mork Wealth</p>
+        <h1>Start building your view.</h1>
+        <p>Create an account to track markets, portfolios, and debt planning in one place.</p>
+      </section>
       <div class="signup-card">
         <div class="signup-header">
-          <h1>Create Account</h1>
-          <p>Sign up to get started with Mork Wealth</p>
+          <h1>Create account</h1>
+          <p>Set up your Mork Wealth login.</p>
         </div>
 
         <form [formGroup]="signupForm" (ngSubmit)="onSubmit()" class="signup-form">
@@ -89,7 +94,6 @@ import { AuthService } from '../services/auth.service';
       </div>
     </div>
   `,
-  styleUrls: ['../styles/components/signup.component.scss']
 })
 export class SignupComponent implements OnInit {
   signupForm!: FormGroup;

@@ -43,6 +43,22 @@ class LoanUpdate(CamelModel):
     notes: str | None = None
 
 
+class AssetCreate(CamelModel):
+    name: str
+    asset_type: str
+    value: float
+    institution: str | None = None
+    notes: str | None = None
+
+
+class AssetUpdate(CamelModel):
+    name: str | None = None
+    asset_type: str | None = None
+    value: float | None = None
+    institution: str | None = None
+    notes: str | None = None
+
+
 class WatchlistCreate(CamelModel):
     name: str
     description: str | None = None

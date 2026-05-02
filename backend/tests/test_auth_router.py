@@ -44,6 +44,28 @@ def test_authenticated_user_can_create_loan(client):
     assert response.json()["data"]["name"] == "Car"
 
 
+def test_authenticated_user_can_create_asset(client):
+    client.post("/api/auth/signup", json={"email": _email(), "password": "very-secure-pass"})
+
+    response = client.post(
+        "/api/assets",
+        json={
+            "name": "Emergency Fund",
+            "assetType": "Cash",
+            "value": 15000,
+            "institution": "Local Bank",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["name"] == "Emergency Fund"
+    assert response.json()["data"]["assetType"] == "Cash"
+
+    assets = client.get("/api/assets")
+    assert assets.status_code == 200
+    assert any(asset["name"] == "Emergency Fund" for asset in assets.json()["data"])
+
+
 def test_password_reset_changes_password(client):
     email = _email()
     client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})

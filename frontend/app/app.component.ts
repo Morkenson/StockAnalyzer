@@ -17,7 +17,7 @@ import { filter } from 'rxjs/operators';
       display: block;
       height: 100vh;
       overflow: hidden;
-      --app-header-height: 100px;
+      --app-header-height: 76px;
     }
 
     .app-shell {
@@ -45,7 +45,7 @@ import { filter } from 'rxjs/operators';
       right: 0;
       bottom: 0;
       left: 0;
-      padding: var(--spacing-xl) var(--spacing-lg);
+      padding: var(--spacing-xl);
       overflow-y: auto;
       overflow-x: hidden;
       overscroll-behavior: contain;
@@ -61,7 +61,7 @@ import { filter } from 'rxjs/operators';
 
     @media (max-width: 768px) {
       :host {
-        --app-header-height: 160px;
+        --app-header-height: 136px;
       }
 
       .main-content {

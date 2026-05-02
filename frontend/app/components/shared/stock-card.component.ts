@@ -47,7 +47,7 @@ import { Subscription } from 'rxjs';
           *ngIf="showAddToWatchlist && isInWatchlist" 
           class="watchlist-indicator"
           [attr.aria-label]="stock.symbol + ' is in watchlist'">
-          <span class="check-icon">✓</span>
+          <span class="check-icon">OK</span>
         </span>
       </div>
       
@@ -59,7 +59,7 @@ import { Subscription } from 'rxjs';
           </span>
           <span class="change" [class.positive]="stock.changePercent >= 0" 
                 [class.negative]="stock.changePercent < 0">
-            <span class="change-arrow">{{ stock.changePercent >= 0 ? '↑' : '↓' }}</span>
+            <span class="change-arrow">{{ stock.changePercent >= 0 ? 'UP' : 'DOWN' }}</span>
             {{ stock.changePercent >= 0 ? '+' : '' }}{{ stock.changePercent | number:'1.2-2' }}%
           </span>
         </div>
@@ -77,7 +77,6 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styleUrls: ['../../styles/components/shared/stock-card.component.scss']
 })
 export class StockCardComponent implements OnInit, OnDestroy {
   @ViewChild('watchlistDropdown', { static: false }) watchlistDropdown?: ElementRef;

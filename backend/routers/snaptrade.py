@@ -1,12 +1,14 @@
 """SnapTrade API routes - user, connect, portfolio, accounts, brokerages."""
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy.orm import Session
 
+from database import get_db
+from db_models import AppUser
 from models.common import ApiResponse
-from models.snaptrade_models import Account, Portfolio
+from routers.persistence import _current_user
 from services import snaptrade_service as snaptrade_svc
 from services import user_service as user_svc
 
@@ -14,15 +16,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
 
 
-def _get_user_id(request: Request, x_user_id: Annotated[str | None, Header(alias="X-User-Id")] = None) -> str:
-    return (x_user_id or request.headers.get("X-User-Id")) or "user123"
+def _optional_current_user(request: Request, db: Session = Depends(get_db)) -> AppUser | None:
+    try:
+        return _current_user(request, db)
+    except HTTPException:
+        return None
+
+
+def _get_user_id(request: Request, current_user: AppUser | None) -> str:
+    return request.headers.get("X-User-Id") or (current_user.id if current_user else "user123")
+
+
+def _portfolio_redirect_uri(request: Request) -> str:
+    origin = request.headers.get("origin")
+    if origin:
+        return f"{origin.rstrip('/')}/portfolio"
+    return f"{request.url.scheme}://{request.url.netloc}/api/snaptrade/callback"
 
 
 @router.post("/user")
-async def create_user(request: Request):
+async def create_user(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
     try:
-        user_id = _get_user_id(request)
-        await snaptrade_svc.create_user(user_id)
+        user_id = _get_user_id(request, current_user)
+        snaptrade_user = await snaptrade_svc.create_user(user_id)
+        if snaptrade_user.user_secret:
+            await user_svc.store_user_secret(user_id, snaptrade_user.user_secret)
         return ApiResponse(success=True, message="User created successfully").model_dump(by_alias=True)
     except Exception as ex:
         logger.exception("Error creating SnapTrade user")
@@ -33,15 +51,17 @@ async def create_user(request: Request):
 
 
 @router.post("/connect/initiate")
-async def initiate_connection(request: Request):
+async def initiate_connection(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
     try:
-        user_id = _get_user_id(request)
+        user_id = _get_user_id(request, current_user)
         user_secret = await user_svc.get_user_secret(user_id)
         if not user_secret:
-            await snaptrade_svc.create_user(user_id)
-            user_secret = "temp_secret"
+            snaptrade_user = await snaptrade_svc.create_user(user_id)
+            user_secret = snaptrade_user.user_secret
+            if not user_secret:
+                raise RuntimeError("SnapTrade did not return a user secret")
             await user_svc.store_user_secret(user_id, user_secret)
-        redirect_uri = f"{request.url.scheme}://{request.url.netloc}/api/snaptrade/callback"
+        redirect_uri = _portfolio_redirect_uri(request)
         login_link = await snaptrade_svc.initiate_connection(user_id, user_secret, redirect_uri)
         if not login_link:
             return JSONResponse(
@@ -61,9 +81,9 @@ async def initiate_connection(request: Request):
 
 
 @router.get("/portfolio")
-async def get_portfolio(request: Request):
+async def get_portfolio(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
     try:
-        user_id = _get_user_id(request)
+        user_id = _get_user_id(request, current_user)
         user_secret = await user_svc.get_user_secret(user_id)
         if not user_secret:
             return JSONResponse(
@@ -84,9 +104,9 @@ async def get_portfolio(request: Request):
 
 
 @router.get("/accounts")
-async def get_accounts(request: Request):
+async def get_accounts(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
     try:
-        user_id = _get_user_id(request)
+        user_id = _get_user_id(request, current_user)
         user_secret = await user_svc.get_user_secret(user_id)
         if not user_secret:
             return JSONResponse(
@@ -107,9 +127,13 @@ async def get_accounts(request: Request):
 
 
 @router.get("/accounts/{account_id}/holdings")
-async def get_account_holdings(account_id: str, request: Request):
+async def get_account_holdings(
+    account_id: str,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
     try:
-        user_id = _get_user_id(request)
+        user_id = _get_user_id(request, current_user)
         user_secret = await user_svc.get_user_secret(user_id)
         if not user_secret:
             return JSONResponse(

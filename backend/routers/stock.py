@@ -28,6 +28,11 @@ async def search_stocks(query: str = Query(..., alias="query")):
             )
         results = await stock_svc.search_stocks(str(query).strip())
         return ApiResponse(success=True, data=results).model_dump(by_alias=True)
+    except stock_svc.StockDataConfigurationError as ex:
+        return JSONResponse(
+            status_code=503,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
     except Exception as ex:
         logger.exception("Error searching stocks")
         return JSONResponse(
@@ -49,6 +54,11 @@ async def get_stock_quote(symbol: str):
                 ).model_dump(by_alias=True),
             )
         return ApiResponse(success=True, data=quote).model_dump(by_alias=True)
+    except stock_svc.StockDataConfigurationError as ex:
+        return JSONResponse(
+            status_code=503,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
     except Exception as ex:
         logger.exception("Error getting stock quote for symbol %s", symbol)
         return JSONResponse(
@@ -70,6 +80,11 @@ async def get_stock_details(symbol: str):
                 ).model_dump(by_alias=True),
             )
         return ApiResponse(success=True, data=details).model_dump(by_alias=True)
+    except stock_svc.StockDataConfigurationError as ex:
+        return JSONResponse(
+            status_code=503,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
     except Exception as ex:
         logger.exception("Error getting stock details for symbol %s", symbol)
         return JSONResponse(
@@ -88,6 +103,11 @@ async def get_multiple_quotes(symbols: List[str]):
             )
         quotes = await stock_svc.get_multiple_stock_quotes(symbols)
         return ApiResponse(success=True, data=quotes).model_dump(by_alias=True)
+    except stock_svc.StockDataConfigurationError as ex:
+        return JSONResponse(
+            status_code=503,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
     except Exception as ex:
         logger.exception("Error getting multiple stock quotes")
         return JSONResponse(
@@ -113,6 +133,11 @@ async def get_historical(
                 ).model_dump(by_alias=True),
             )
         return ApiResponse(success=True, data=data).model_dump(by_alias=True)
+    except stock_svc.StockDataConfigurationError as ex:
+        return JSONResponse(
+            status_code=503,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
     except Exception as ex:
         logger.exception("Error getting historical data for symbol %s", symbol)
         return JSONResponse(

@@ -8,6 +8,8 @@ import { PortfolioComponent } from './components/portfolio.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
 import { DebtCalculatorComponent } from './components/debt-calculator.component';
+import { AssetsComponent } from './components/assets.component';
+import { SettingsComponent } from './components/settings.component';
 import { AuthGuard } from './guards/auth.guard';
 
 const routes: Routes = [
@@ -20,6 +22,8 @@ const routes: Routes = [
   { path: 'watchlist', component: WatchlistComponent, canActivate: [AuthGuard] },
   { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
   { path: 'debt-calculator', component: DebtCalculatorComponent, canActivate: [AuthGuard] },
+  { path: 'assets', component: AssetsComponent, canActivate: [AuthGuard] },
+  { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];
 

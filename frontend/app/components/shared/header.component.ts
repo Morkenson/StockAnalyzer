@@ -16,7 +16,6 @@ import { Subscription } from 'rxjs';
           
           <div class="header-search" *ngIf="isAuthenticated">
             <div class="search-input-wrapper">
-              
               <input 
                 type="text" 
                 [formControl]="searchControl"
@@ -29,7 +28,7 @@ import { Subscription } from 'rxjs';
                 (click)="onSearch()"
                 [attr.aria-label]="'Search for ' + searchControl.value"
                 [disabled]="!searchControl.value || searchControl.value.trim().length === 0">
-                Search
+                Go
               </button>
             </div>
           </div>
@@ -46,6 +45,12 @@ import { Subscription } from 'rxjs';
             </a>
             <a routerLink="/debt-calculator" routerLinkActive="active">
               Debt Calculator
+            </a>
+            <a routerLink="/assets" routerLinkActive="active">
+              Assets
+            </a>
+            <a routerLink="/settings" routerLinkActive="active">
+              Settings
             </a>
           </nav>
 
@@ -77,7 +82,6 @@ import { Subscription } from 'rxjs';
       </div>
     </header>
   `,
-  styleUrls: ['../../styles/components/shared/header.component.scss']
 })
 export class HeaderComponent implements OnInit, OnDestroy {
   @ViewChild('userDropdown', { static: false }) userDropdown?: ElementRef;

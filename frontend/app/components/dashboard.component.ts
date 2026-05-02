@@ -9,37 +9,49 @@ import { map, switchMap } from 'rxjs/operators';
   selector: 'app-dashboard',
   template: `
     <div class="dashboard">
-      <div class="dashboard-header">
-        <h1>Dashboard</h1>
-        <p class="dashboard-subtitle">Track your favorite stocks and monitor market trends</p>
-      </div>
-      
-      <div class="card" *ngIf="marketIndexes$ | async as indexes">
+      <section class="page-hero dashboard-hero">
+        <div>
+          <p class="page-kicker">Mork Wealth</p>
+          <h1>Investing, simplified.</h1>
+          <p class="dashboard-subtitle">Follow the markets you care about and keep your favorite stocks close.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn btn-primary" routerLink="/search">Search Stocks</button>
+          <button class="btn btn-secondary" routerLink="/watchlist">View Watchlists</button>
+        </div>
+      </section>
+
+      <section class="card market-card" *ngIf="marketIndexes$ | async as indexes">
         <div class="card-header">
-          <span>Market Overview</span>
+          <div>
+            <span>Markets</span>
+            <p>Broad market snapshots</p>
+          </div>
           <span class="card-badge">{{ indexes.length }}</span>
         </div>
         <div class="grid grid-3" *ngIf="indexes.length > 0">
           <app-stock-card 
             *ngFor="let index of indexes" 
             [stock]="index"
-            [showAddToWatchlist]="true">
+            [showAddToWatchlist]="false">
           </app-stock-card>
         </div>
         <div *ngIf="indexes.length === 0" class="empty-state">
           <p>Market overview data is loading...</p>
         </div>
-      </div>
+      </section>
 
-      <div class="card" *ngIf="watchlistQuotes$ | async as quotes">
+      <section class="card watchlist-preview-card" *ngIf="watchlistQuotes$ | async as quotes">
         <div class="card-header">
-          <span>Your Watchlist</span>
+          <div>
+            <span>Your Watchlist</span>
+            <p>Stocks you are keeping an eye on</p>
+          </div>
           <span class="card-badge" *ngIf="quotes.length > 0">{{ quotes.length }}</span>
         </div>
         <div *ngIf="quotes.length === 0" class="empty-state">
-          <div class="empty-state-icon">📊</div>
           <h3>Your watchlist is empty</h3>
-          <p>Start tracking stocks by adding them from the search page</p>
+          <p>Start tracking stocks by adding them from search.</p>
           <button class="btn btn-primary" routerLink="/search">Search Stocks</button>
         </div>
         <div class="grid grid-3" *ngIf="quotes.length > 0">
@@ -49,11 +61,10 @@ import { map, switchMap } from 'rxjs/operators';
             [showAddToWatchlist]="false">
           </app-stock-card>
         </div>
-      </div>
+      </section>
 
     </div>
   `,
-  styleUrls: ['../styles/components/dashboard.component.scss']
 })
 export class DashboardComponent implements OnInit {
   marketIndexes$!: Observable<StockQuote[]>;

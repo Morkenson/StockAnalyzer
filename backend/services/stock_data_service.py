@@ -19,9 +19,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = httpx.Timeout(10.0)
 
 
+class StockDataConfigurationError(RuntimeError):
+    pass
+
+
+def _require_api_key() -> None:
+    if not TWELVE_DATA_API_KEY:
+        raise StockDataConfigurationError("TWELVE_DATA_API_KEY is not configured")
+
+
 async def search_stocks(query: str) -> list[StockSearchResult]:
     if not query or not query.strip():
         return []
+    _require_api_key()
     url = f"{TWELVE_DATA_API_URL}/symbol_search?symbol={quote_plus(query.strip())}&apikey={TWELVE_DATA_API_KEY}"
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         resp = await client.get(url)
@@ -63,6 +73,7 @@ def _parse_int(val: Any, default: int = 0) -> int:
 
 
 async def get_stock_quote(symbol: str, client: httpx.AsyncClient | None = None) -> StockQuote | None:
+    _require_api_key()
     url = f"{TWELVE_DATA_API_URL}/quote?symbol={quote_plus(symbol)}&apikey={TWELVE_DATA_API_KEY}"
     if client:
         resp = await client.get(url)
@@ -156,6 +167,7 @@ async def get_historical_data(
     interval: str = "1day",
     output_size: int | None = None,
 ) -> list[StockHistoricalData]:
+    _require_api_key()
     if output_size is None:
         output_size = {"1day": 30, "1week": 12, "1month": 12}.get(interval, 30)
     url = f"{TWELVE_DATA_API_URL}/time_series?symbol={quote_plus(symbol)}&interval={interval}&outputsize={output_size}&apikey={TWELVE_DATA_API_KEY}"

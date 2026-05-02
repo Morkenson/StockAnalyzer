@@ -9,7 +9,7 @@ import { Subscription } from 'rxjs';
   selector: 'app-stock-details',
   template: `
     <div class="stock-details" *ngIf="stock">
-      <div class="card">
+      <section class="card stock-detail-hero">
         <div class="stock-header">
           <div class="stock-info">
             <h1>{{ stock.symbol }}</h1>
@@ -24,7 +24,7 @@ import { Subscription } from 'rxjs';
             <div *ngIf="stock.change !== undefined && stock.changePercent !== undefined" class="stock-change" 
                  [class.positive]="stock.change >= 0" 
                  [class.negative]="stock.change < 0">
-              <span class="change-arrow">{{ stock.change >= 0 ? '↑' : '↓' }}</span>
+              <span class="change-arrow">{{ stock.change >= 0 ? 'UP' : 'DOWN' }}</span>
               <span>{{ stock.change >= 0 ? '+' : '' }}{{ stock.change | number:'1.2-2' }}</span>
               <span>({{ stock.changePercent >= 0 ? '+' : '' }}{{ stock.changePercent | number:'1.2-2' }}%)</span>
             </div>
@@ -69,10 +69,16 @@ import { Subscription } from 'rxjs';
             Remove from Watchlist
           </button>
         </div>
-      </div>
+      </section>
 
-        <div class="card">
-        <div class="card-header">Financial Metrics</div>
+      <div class="stock-detail-grid">
+        <section class="card">
+          <div class="card-header">
+            <div>
+              <span>Key Metrics</span>
+              <p>Company fundamentals</p>
+            </div>
+          </div>
           <table class="metrics-table">
             <tr *ngIf="stock.marketCap">
               <td>Market Cap</td>
@@ -103,11 +109,12 @@ import { Subscription } from 'rxjs';
             <td>{{ stock.averageVolume | number }}</td>
             </tr>
           </table>
-      </div>
+        </section>
 
-      <div class="card" *ngIf="stock.description">
-        <div class="card-header">About</div>
-        <p>{{ stock.description }}</p>
+        <section class="card" *ngIf="stock.description">
+          <div class="card-header">About</div>
+          <p>{{ stock.description }}</p>
+        </section>
       </div>
     </div>
 
@@ -126,7 +133,6 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styleUrls: ['../../styles/components/shared/stock-details.component.scss']
 })
 export class StockDetailsComponent implements OnInit, OnDestroy {
   @ViewChild('watchlistDropdown', { static: false }) watchlistDropdown?: ElementRef;

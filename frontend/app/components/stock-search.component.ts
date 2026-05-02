@@ -11,16 +11,18 @@ import { Subscription } from 'rxjs';
   selector: 'app-stock-search',
   template: `
     <div class="stock-search">
-      <div class="search-header">
-        <h1>Search Stocks</h1>
-        <p class="search-subtitle">Find stocks by symbol or company name</p>
-      </div>
-      
-      <div class="card search-card">
+      <section class="page-hero search-hero">
+        <div>
+          <p class="page-kicker">Explore</p>
+          <h1>Find your next stock.</h1>
+          <p class="search-subtitle">Search by company name or ticker, then add it to a watchlist.</p>
+        </div>
+      </section>
+
+      <section class="card search-card">
         <div class="input-group">
           <label for="searchInput">Search by symbol or company name</label>
           <div class="search-input-wrapper">
-            <span class="search-icon">🔍</span>
             <input 
               id="searchInput"
               type="text" 
@@ -31,7 +33,7 @@ import { Subscription } from 'rxjs';
               aria-label="Search stocks">
           </div>
         </div>
-      </div>
+      </section>
 
       <div *ngIf="loading" class="card loading-card">
         <div class="loading-content">
@@ -40,9 +42,9 @@ import { Subscription } from 'rxjs';
         </div>
       </div>
 
-      <div *ngIf="searchResults.length > 0" class="card results-card">
+      <section *ngIf="searchResults.length > 0" class="card results-card">
         <div class="card-header">
-          <span>Search Results</span>
+          <span>Results</span>
           <span class="results-count">{{ searchResults.length }} found</span>
         </div>
         <div class="table-wrapper">
@@ -75,7 +77,7 @@ import { Subscription } from 'rxjs';
                         (click)="toggleWatchlistDropdown(getRowId(i, result), result.symbol, $event)"
                         [attr.aria-label]="'Add ' + result.symbol + ' to watchlist'"
                         [attr.aria-expanded]="openDropdownId === getRowId(i, result)">
-                        + Watchlist
+                        Add
                       </button>
                       <div class="watchlist-dropdown" 
                            *ngIf="openDropdownId === getRowId(i, result)"
@@ -99,7 +101,7 @@ import { Subscription } from 'rxjs';
                       </div>
                     </div>
                     <span *ngIf="isInWatchlist(result.symbol)" class="watchlist-badge" [attr.aria-label]="result.symbol + ' is in watchlist'">
-                      <span class="check-icon">✓</span> In Watchlist
+                      <span class="check-icon">OK</span> In Watchlist
                     </span>
                   </div>
                 </td>
@@ -107,18 +109,16 @@ import { Subscription } from 'rxjs';
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       <div *ngIf="searchResults.length === 0 && searchControl.value && !loading" class="card empty-results-card">
         <div class="empty-state">
-          <div class="empty-state-icon">🔍</div>
           <h3>No results found</h3>
           <p>Try searching with a different symbol or company name</p>
         </div>
       </div>
     </div>
   `,
-  styleUrls: ['../styles/components/stock-search.component.scss']
 })
 export class StockSearchComponent implements OnInit, OnDestroy {
   searchControl = new FormControl('');

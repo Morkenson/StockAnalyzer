@@ -13,6 +13,7 @@ class SnapTradeUser(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     id: str = ""
     user_id: str = ""
+    user_secret: str | None = None
     email: str | None = None
     created_at: datetime | None = None
 

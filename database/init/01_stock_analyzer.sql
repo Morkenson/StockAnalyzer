@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS loans (
 
 CREATE INDEX IF NOT EXISTS idx_loans_user_id ON loans(user_id);
 
+CREATE TABLE IF NOT EXISTS assets (
+  id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+  user_id VARCHAR(128) NOT NULL,
+  name TEXT NOT NULL,
+  asset_type VARCHAR(80) NOT NULL,
+  value DECIMAL(14,2) NOT NULL,
+  institution TEXT,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_assets_user_id ON assets(user_id);
+
 CREATE TABLE IF NOT EXISTS watchlists (
   id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
   user_id VARCHAR(128) NOT NULL,

@@ -4,6 +4,11 @@ from models.stock_models import StockQuote
 from services import stock_data_service as svc
 
 
+@pytest.fixture(autouse=True)
+def twelve_data_key(monkeypatch):
+    monkeypatch.setattr(svc, "TWELVE_DATA_API_KEY", "test-key")
+
+
 class FakeResponse:
     def __init__(self, payload, is_success=True):
         self._payload = payload
@@ -56,6 +61,14 @@ async def test_search_stocks_maps_results(monkeypatch):
 
     assert results[0].symbol == "AAPL"
     assert results[0].name == "Apple Inc."
+
+
+@pytest.mark.asyncio
+async def test_search_stocks_requires_api_key(monkeypatch):
+    monkeypatch.setattr(svc, "TWELVE_DATA_API_KEY", "")
+
+    with pytest.raises(svc.StockDataConfigurationError):
+        await svc.search_stocks("AAPL")
 
 
 @pytest.mark.asyncio

@@ -9,10 +9,11 @@ import { Subscription } from 'rxjs';
   selector: 'app-watchlist',
   template: `
     <div class="watchlist">
-      <div class="watchlist-header">
+      <section class="page-hero watchlist-hero">
         <div class="header-left">
           <div class="watchlist-selector-wrapper">
             <h1>Watchlists</h1>
+            <p class="page-subtitle">Organize the companies and funds you want to follow.</p>
             <div class="watchlist-controls">
               <select 
                 class="watchlist-select"
@@ -27,7 +28,7 @@ import { Subscription } from 'rxjs';
                 class="btn btn-secondary btn-sm"
                 (click)="showCreateModal = true"
                 title="Create new watchlist">
-                + New
+                New
               </button>
               <button 
                 *ngIf="selectedWatchlist"
@@ -51,9 +52,9 @@ import { Subscription } from 'rxjs';
           *ngIf="selectedWatchlist && watchlistItems.length > 0" 
           class="btn btn-primary"
           routerLink="/search">
-          + Add Stocks
+          Add Stocks
         </button>
-      </div>
+      </section>
       
       <!-- Create Watchlist Modal -->
       <div class="modal-overlay" *ngIf="showCreateModal" (click)="showCreateModal = false">
@@ -118,7 +119,6 @@ import { Subscription } from 'rxjs';
       <!-- Empty state when no watchlists exist -->
       <div class="card" *ngIf="watchlists.length === 0 && !loading">
         <div class="empty-state">
-          <div class="empty-state-icon">⭐</div>
           <h3>No watchlists yet</h3>
           <p>Create your first watchlist to start tracking stocks</p>
           <button class="btn btn-primary" (click)="showCreateModal = true">Create Watchlist</button>
@@ -127,17 +127,18 @@ import { Subscription } from 'rxjs';
       
       <div class="card" *ngIf="selectedWatchlist && watchlistItems.length === 0">
         <div class="empty-state">
-          <div class="empty-state-icon">⭐</div>
           <h3>{{ selectedWatchlist.name }} is empty</h3>
           <p>Search for stocks and add them to this watchlist to track them here</p>
           <button class="btn btn-primary" routerLink="/search">Search Stocks</button>
         </div>
       </div>
 
-      <div *ngIf="selectedWatchlist && watchlistItems.length > 0" class="card watchlist-card">
+      <section *ngIf="selectedWatchlist && watchlistItems.length > 0" class="card watchlist-card">
         <div class="card-header">
-          <span>{{ selectedWatchlist.name }}</span>
-          
+          <div>
+            <span>{{ selectedWatchlist.name }}</span>
+            <p>{{ watchlistItems.length }} tracked {{ watchlistItems.length === 1 ? 'stock' : 'stocks' }}</p>
+          </div>
         </div>
         
         <div *ngIf="loading" class="loading-state">
@@ -195,14 +196,12 @@ import { Subscription } from 'rxjs';
         </div>
 
         <div *ngIf="!loading && stockQuotes.length === 0 && watchlistItems.length > 0" class="empty-state">
-          <div class="empty-state-icon">⚠️</div>
           <p>{{ errorMessage || 'Unable to load stock data. Please try refreshing.' }}</p>
           <button class="btn btn-primary" (click)="loadWatchlist()">Retry</button>
         </div>
-      </div>
+      </section>
     </div>
   `,
-  styleUrls: ['../styles/components/watchlist.component.scss']
 })
 export class WatchlistComponent implements OnInit, OnDestroy {
   watchlists: Watchlist[] = [];
