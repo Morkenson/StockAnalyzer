@@ -18,7 +18,8 @@ interface ApiResponse<T> {
 }
 
 interface AuthPayload {
-  user: AppUser;
+  user?: AppUser;
+  pendingUserId?: string;
 }
 
 @Injectable({
@@ -79,11 +80,14 @@ export class AuthService {
     }
   }
 
-  async signIn(email: string, password: string): Promise<{ user: AppUser | null; error: any }> {
+  async signIn(email: string, password: string): Promise<{ user: AppUser | null; pendingUserId?: string; error: any }> {
     try {
       const response = await firstValueFrom(
         this.http.post<ApiResponse<AuthPayload>>(`${this.apiUrl}/auth/signin`, { email, password })
       );
+      if (response.data?.pendingUserId) {
+        return { user: null, pendingUserId: response.data.pendingUserId, error: null };
+      }
       if (!response.data?.user) {
         throw new Error(response.message || 'Failed to sign in');
       }
@@ -91,6 +95,32 @@ export class AuthService {
       return { user: response.data.user, error: null };
     } catch (error: any) {
       return { user: null, error: this.normalizeError(error) };
+    }
+  }
+
+  async verifyOtp(pendingUserId: string, code: string): Promise<{ user: AppUser | null; error: any }> {
+    try {
+      const response = await firstValueFrom(
+        this.http.post<ApiResponse<AuthPayload>>(`${this.apiUrl}/auth/verify-otp`, { pendingUserId, code })
+      );
+      if (!response.data?.user) {
+        throw new Error(response.message || 'Verification failed');
+      }
+      this.setUser(response.data.user);
+      return { user: response.data.user, error: null };
+    } catch (error: any) {
+      return { user: null, error: this.normalizeError(error) };
+    }
+  }
+
+  async resendOtp(pendingUserId: string): Promise<{ error?: any }> {
+    try {
+      await firstValueFrom(
+        this.http.post<ApiResponse<void>>(`${this.apiUrl}/auth/resend-otp`, { pendingUserId })
+      );
+      return {};
+    } catch (error: any) {
+      return { error: this.normalizeError(error) };
     }
   }
 

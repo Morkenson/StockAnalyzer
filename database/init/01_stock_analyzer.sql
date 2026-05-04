@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS watchlist_items (
 
 CREATE INDEX IF NOT EXISTS idx_watchlist_items_watchlist_id ON watchlist_items(watchlist_id);
 
+CREATE TABLE IF NOT EXISTS signin_otps (
+  id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+  user_id VARCHAR(36) NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signin_otps_user_id ON signin_otps(user_id);
+CREATE INDEX IF NOT EXISTS idx_signin_otps_expires_at ON signin_otps(expires_at);
+
 CREATE TABLE IF NOT EXISTS snaptrade_user_secrets (
   user_id VARCHAR(128) PRIMARY KEY,
   user_secret TEXT NOT NULL,

@@ -74,3 +74,12 @@ class WatchlistUpdate(CamelModel):
 class WatchlistItemCreate(CamelModel):
     symbol: str
     notes: str | None = None
+
+
+class OtpVerify(CamelModel):
+    pending_user_id: str
+    code: str
+
+
+class OtpResend(CamelModel):
+    pending_user_id: str

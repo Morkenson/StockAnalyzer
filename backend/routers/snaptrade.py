@@ -26,7 +26,9 @@ def _optional_current_user(request: Request, db: Session = Depends(get_db)) -> A
 
 
 def _get_user_id(request: Request, current_user: AppUser | None) -> str:
-    return request.headers.get("X-User-Id") or (current_user.id if current_user else "user123")
+    if current_user is not None:
+        return current_user.id
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 def _portfolio_redirect_uri(request: Request) -> str:

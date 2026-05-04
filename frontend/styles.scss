@@ -2857,6 +2857,38 @@ textarea:focus {
   text-decoration: underline;
 }
 
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-primary-light);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  font-family: inherit;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    color: var(--color-text-tertiary);
+    cursor: default;
+  }
+}
+
+.otp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.otp-sep {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
 @media (max-width: 768px) {
   .login-container {
     padding: var(--spacing-md);

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Github Projects\\\\StockAnalyzer\" -Recurse -Filter \"*.py\")",
+      "Bash(Select-Object -First 20 FullName)",
+      "Bash(python -m pytest tests/test_snaptrade_router.py tests/test_snaptrade_service_extra.py tests/test_user_service.py -v)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\backend\" -Recurse -Include \"*mail*\",\"*email*\",\"*verify*\",\"*otp*\",\"*token*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Bash(python -m pytest tests/ -v)"
+    ]
+  }
+}

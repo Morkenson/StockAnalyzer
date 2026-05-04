@@ -2,12 +2,17 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
+from db_models import AppUser
 from main import app
 from models.snaptrade_models import Account, Portfolio, Brokerage, Holding, RecurringInvestment, SnapTradeUser
+from routers.snaptrade import _optional_current_user
 from services.snaptrade_service import SnapTradeServiceError
 
+FAKE_USER = AppUser(id="user1", email="test@example.com", password_hash="fake")
+app.dependency_overrides[_optional_current_user] = lambda: FAKE_USER
+
 client = TestClient(app)
-HEADERS = {"X-User-Id": "user1"}
+HEADERS = {}
 
 MOCK_PORTFOLIO = Portfolio(user_id="user1", accounts=[], total_balance=10000.0, total_gain_loss=500.0)
 MOCK_PORTFOLIO_WITH_ACCOUNTS = Portfolio(

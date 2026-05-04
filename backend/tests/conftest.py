@@ -1,5 +1,8 @@
+import os
 import sys
 from pathlib import Path
+
+os.environ.setdefault("JWT_SECRET", "test-secret-for-testing-only")
 
 # Ensure backend root is on path when running pytest from backend/ or project root
 _backend_dir = Path(__file__).resolve().parent.parent

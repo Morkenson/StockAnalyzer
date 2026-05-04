@@ -11,12 +11,13 @@ from decimal import Decimal
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from db_models import AppUser, Asset, Loan, PasswordResetToken, Watchlist, WatchlistItem
+from db_models import AppUser, Asset, Loan, PasswordResetToken, SigninOtp, Watchlist, WatchlistItem
+from services import email_service
 from models.common import ApiResponse
 from models.persistence_models import (
     AssetCreate,
@@ -24,6 +25,8 @@ from models.persistence_models import (
     AuthCredentials,
     LoanCreate,
     LoanUpdate,
+    OtpResend,
+    OtpVerify,
     PasswordResetConfirm,
     PasswordResetRequest,
     WatchlistCreate,
@@ -33,12 +36,16 @@ from models.persistence_models import (
 
 router = APIRouter(tags=["persistence"])
 
-JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-change-me"
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable must be set")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").lower()
 RESET_TOKEN_MINUTES = 30
+OTP_EXPIRE_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
 
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 
@@ -208,13 +215,51 @@ async def signup(payload: AuthCredentials, request: Request, response: Response,
 
 
 @router.post("/auth/signin")
-async def signin(payload: AuthCredentials, request: Request, response: Response, db: Session = Depends(get_db)):
+async def signin(payload: AuthCredentials, request: Request, db: Session = Depends(get_db)):
     _rate_limit(request, "signin", limit=8, window_seconds=300)
     user = db.scalar(select(AppUser).where(AppUser.email == payload.email.strip().lower()))
     if not user or not _verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
+    db.commit()
+    await email_service.send_otp_email(user.email, code)
+    return ApiResponse(success=True, data={"pendingUserId": user.id}).model_dump(by_alias=True)
+
+
+@router.post("/auth/verify-otp")
+async def verify_otp(payload: OtpVerify, request: Request, response: Response, db: Session = Depends(get_db)):
+    _rate_limit(request, "verify-otp", limit=10, window_seconds=300)
+    otp = db.scalar(
+        select(SigninOtp).where(SigninOtp.user_id == payload.pending_user_id, SigninOtp.expires_at > _now())
+    )
+    if not otp or otp.attempts >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
+    if not hmac.compare_digest(otp.code_hash, _token_hash(payload.code.strip())):
+        otp.attempts += 1
+        db.commit()
+        remaining = OTP_MAX_ATTEMPTS - otp.attempts
+        detail = "Invalid code" if remaining > 0 else "Too many incorrect attempts. Please sign in again."
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    user = db.get(AppUser, otp.user_id)
+    db.delete(otp)
+    db.commit()
     _set_auth_cookie(response, _create_access_token(user))
     return ApiResponse(success=True, data={"user": _user_row(user)}).model_dump(by_alias=True)
+
+
+@router.post("/auth/resend-otp")
+async def resend_otp(payload: OtpResend, request: Request, db: Session = Depends(get_db)):
+    _rate_limit(request, "resend-otp", limit=3, window_seconds=300)
+    user = db.get(AppUser, payload.pending_user_id)
+    if user:
+        db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
+        db.commit()
+        await email_service.send_otp_email(user.email, code)
+    return ApiResponse(success=True, message="If a pending sign-in exists, a new code has been sent.").model_dump(by_alias=True)
 
 
 @router.post("/auth/signout")
