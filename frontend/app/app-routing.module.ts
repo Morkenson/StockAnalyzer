@@ -7,12 +7,11 @@ import { WatchlistComponent } from './components/watchlist.component';
 import { PortfolioComponent } from './components/portfolio.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
-import { DebtCalculatorComponent } from './components/debt-calculator.component';
-import { AssetsComponent } from './components/assets.component';
+import { NetWorthComponent } from './components/net-worth.component';
 import { SettingsComponent } from './components/settings.component';
 import { AuthGuard } from './guards/auth.guard';
 
-const routes: Routes = [
+export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
   { path: 'signup', component: SignupComponent },
@@ -21,8 +20,9 @@ const routes: Routes = [
   { path: 'stock/:symbol', component: StockDetailsComponent, canActivate: [AuthGuard] },
   { path: 'watchlist', component: WatchlistComponent, canActivate: [AuthGuard] },
   { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
-  { path: 'debt-calculator', component: DebtCalculatorComponent, canActivate: [AuthGuard] },
-  { path: 'assets', component: AssetsComponent, canActivate: [AuthGuard] },
+  { path: 'debt-calculator', redirectTo: '/networth', pathMatch: 'full' },
+  { path: 'networth', component: NetWorthComponent, canActivate: [AuthGuard] },
+  { path: 'assets', redirectTo: '/networth', pathMatch: 'full' },
   { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];

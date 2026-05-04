@@ -3,25 +3,75 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { Asset } from '../models/asset.model';
 import { AssetService } from '../services/asset.service';
+import { Loan } from '../models/loan.model';
+import { Portfolio } from '../models/snaptrade.model';
+import { LoanService } from '../services/loan.service';
+import { SnapTradeService } from '../services/snaptrade.service';
 
 @Component({
-  selector: 'app-assets',
+  selector: 'app-net-worth',
   template: `
     <div class="dashboard">
       <section class="page-hero">
         <div>
           <p class="page-kicker">Balance sheet</p>
-          <h1>Assets</h1>
-          <p class="dashboard-subtitle">Track cash, investments, property, and other owned assets.</p>
+          <h1>Net Worth</h1>
+          <p class="dashboard-subtitle">Add connected portfolios and manual assets, then subtract saved loan principal.</p>
         </div>
-        <button type="button" class="btn btn-primary" (click)="openAssetForm()">
-          Add Asset
-        </button>
+        <div class="hero-actions">
+          <button type="button" class="btn btn-secondary" (click)="toggleDebtCalculator()">
+            Debt
+          </button>
+          <button type="button" class="btn btn-primary" (click)="openAssetForm()">
+            Add Asset
+          </button>
+        </div>
+      </section>
+
+      <section class="card totals-card" aria-live="polite">
+        <div class="card-header">
+          <div>
+            <span>Total Net Worth</span>
+            <p>Connected portfolios + manual assets - saved debt principal</p>
+          </div>
+        </div>
+        <div class="aggregate-totals">
+          <div class="total-item">
+            <span class="total-label">Net Worth</span>
+            <span class="total-value highlight">\${{ totalNetWorth | number:'1.2-2' }}</span>
+          </div>
+          <div class="total-item">
+            <span class="total-label">Connected Portfolios</span>
+            <span class="total-value">\${{ connectedPortfolioValue | number:'1.2-2' }}</span>
+          </div>
+          <div class="total-item">
+            <span class="total-label">Manual Assets</span>
+            <span class="total-value">\${{ totalAssetValue | number:'1.2-2' }}</span>
+          </div>
+          <div class="total-item">
+            <span class="total-label">Total Debt</span>
+            <span class="total-value negative">{{ totalDebtPrincipal > 0 ? '-' : '' }}\${{ totalDebtPrincipal | number:'1.2-2' }}</span>
+          </div>
+          <div class="total-item">
+            <span class="total-label">Tracked Assets</span>
+            <span class="total-value">{{ assets.length }}</span>
+          </div>
+          <div class="total-item">
+            <span class="total-label">Saved Loans</span>
+            <span class="total-value">{{ loans.length }}</span>
+          </div>
+        </div>
+        <p class="card-description" *ngIf="portfolioLoading">Loading connected portfolios...</p>
+        <p class="card-description" *ngIf="portfolioError">{{ portfolioError }}</p>
+      </section>
+
+      <section *ngIf="showDebtCalculator" class="net-worth-debt-section">
+        <app-debt-calculator></app-debt-calculator>
       </section>
 
       <div class="grid grid-3" *ngIf="assets.length > 0">
         <div class="result-item">
-          <span class="result-label">Total Assets</span>
+          <span class="result-label">Manual Assets</span>
           <span class="result-value highlight">\${{ totalAssetValue | number:'1.2-2' }}</span>
         </div>
         <div class="result-item">
@@ -119,7 +169,7 @@ import { AssetService } from '../services/asset.service';
 
       <div *ngIf="assets.length === 0 && !showAssetForm" class="empty-state">
         <h3>No assets yet</h3>
-        <p>Add your first asset to start building a personal balance sheet.</p>
+        <p>Add your first manual asset to round out your net worth.</p>
         <button type="button" class="btn btn-primary" (click)="openAssetForm()">Add Asset</button>
       </div>
 
@@ -155,19 +205,26 @@ import { AssetService } from '../services/asset.service';
     </div>
   `,
 })
-export class AssetsComponent implements OnInit, OnDestroy {
+export class NetWorthComponent implements OnInit, OnDestroy {
   assets: Asset[] = [];
+  loans: Loan[] = [];
   assetForm!: FormGroup;
   assetTypes = ['Cash', 'Brokerage', 'Retirement', 'Real Estate', 'Vehicle', 'Business', 'Other'];
   showAssetForm = false;
   isSaving = false;
   deletingAssetId = '';
   errorMessage = '';
-  private assetsSubscription?: Subscription;
+  showDebtCalculator = false;
+  connectedPortfolioValue = 0;
+  portfolioLoading = false;
+  portfolioError = '';
+  private subscriptions = new Subscription();
 
   constructor(
     private fb: FormBuilder,
-    private assetService: AssetService
+    private assetService: AssetService,
+    private loanService: LoanService,
+    private snapTradeService: SnapTradeService
   ) {}
 
   ngOnInit(): void {
@@ -179,17 +236,35 @@ export class AssetsComponent implements OnInit, OnDestroy {
       notes: ['']
     });
 
-    this.assetsSubscription = this.assetService.getAssets().subscribe(assets => {
-      this.assets = assets;
-    });
+    this.subscriptions.add(
+      this.assetService.getAssets().subscribe(assets => {
+        this.assets = assets;
+      })
+    );
+
+    this.subscriptions.add(
+      this.loanService.getLoans().subscribe(loans => {
+        this.loans = loans;
+      })
+    );
+
+    this.loadConnectedPortfolio();
   }
 
   ngOnDestroy(): void {
-    this.assetsSubscription?.unsubscribe();
+    this.subscriptions.unsubscribe();
+  }
+
+  get totalNetWorth(): number {
+    return this.connectedPortfolioValue + this.totalAssetValue - this.totalDebtPrincipal;
   }
 
   get totalAssetValue(): number {
     return this.assets.reduce((total, asset) => total + asset.value, 0);
+  }
+
+  get totalDebtPrincipal(): number {
+    return this.loans.reduce((total, loan) => total + loan.principal, 0);
   }
 
   get largestAssetName(): string {
@@ -199,9 +274,37 @@ export class AssetsComponent implements OnInit, OnDestroy {
     return this.assets.reduce((largest, asset) => asset.value > largest.value ? asset : largest, this.assets[0]).name;
   }
 
+  private loadConnectedPortfolio(): void {
+    this.portfolioLoading = true;
+    this.portfolioError = '';
+
+    this.subscriptions.add(
+      this.snapTradeService.getPortfolio().subscribe({
+        next: (portfolio: Portfolio) => {
+          this.connectedPortfolioValue = portfolio.totalBalance || 0;
+          this.portfolioLoading = false;
+        },
+        error: (error: any) => {
+          this.connectedPortfolioValue = 0;
+          this.portfolioLoading = false;
+
+          if (error?.status === 404) {
+            return;
+          }
+
+          this.portfolioError = 'Connected portfolios are unavailable right now. Manual assets and debt are still included.';
+        }
+      })
+    );
+  }
+
   openAssetForm(): void {
     this.showAssetForm = true;
     this.errorMessage = '';
+  }
+
+  toggleDebtCalculator(): void {
+    this.showDebtCalculator = !this.showDebtCalculator;
   }
 
   closeAssetForm(): void {

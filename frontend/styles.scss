@@ -3661,6 +3661,143 @@ textarea:focus,
   display: block;
 }
 
+.recurring-investments-card {
+  margin-top: 1rem;
+}
+
+.recurring-investment-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.recurring-investment-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) repeat(3, minmax(90px, auto));
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.recurring-investment-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.recurring-investment-item strong {
+  color: var(--color-text-primary);
+}
+
+.recurring-investment-item p,
+.recurring-investment-metric span {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.recurring-investment-metric {
+  display: grid;
+  gap: 0.18rem;
+  justify-items: end;
+}
+
+.loading-state.compact,
+.error-message.compact {
+  min-height: auto;
+  padding: 0.5rem 0;
+}
+
+.account-info {
+  min-width: 0;
+}
+
+.account-info h3 {
+  overflow-wrap: anywhere;
+}
+
+.account-action-rail {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  align-self: stretch;
+  align-content: center;
+  padding-right: 0.9rem;
+  border-right: 1px solid var(--color-border);
+}
+
+.account-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background var(--transition-base), border-color var(--transition-base), color var(--transition-base), transform var(--transition-base);
+}
+
+.account-icon-btn:hover:not(:disabled),
+.account-icon-btn:focus-visible {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  transform: translateY(-1px);
+}
+
+.account-icon-btn.danger {
+  color: var(--color-danger);
+}
+
+.account-icon-btn.danger:hover:not(:disabled),
+.account-icon-btn.danger:focus-visible {
+  border-color: #fecaca;
+  background: #fff1f1;
+  color: var(--color-danger);
+}
+
+.account-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.account-expand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.account-preferences {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.65rem;
+  background: var(--color-bg-secondary);
+}
+
+.account-preferences label {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.account-preference-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
 .portfolio-hero h1 {
   font-size: 2.65rem;
 }
@@ -3798,6 +3935,28 @@ textarea:focus,
     grid-template-columns: 1fr;
   }
 
+  .recurring-investment-item {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .recurring-investment-metric {
+    justify-items: start;
+  }
+
+  .account-header {
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .account-action-rail {
+    padding-right: 0.75rem;
+  }
+
+  .account-preference-row {
+    grid-template-columns: 1fr;
+  }
+
   .login-container,
   .signup-container {
     padding: 1rem;
@@ -3805,5 +3964,189 @@ textarea:focus,
 
   .auth-story {
     display: none;
+  }
+}
+
+/* ============================================
+   Stock Detail Trading Chart
+   ============================================ */
+
+.stock-detail-hero {
+  overflow: hidden;
+}
+
+.stock-detail-hero .stock-header {
+  margin-bottom: 0.6rem;
+}
+
+.stock-detail-hero .stock-price {
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: 0;
+}
+
+.stock-detail-hero .stock-change {
+  background: transparent;
+  padding: 0;
+}
+
+.stock-detail-hero .change-arrow {
+  display: none;
+}
+
+.stock-chart-section {
+  position: relative;
+  margin: 1.25rem -0.35rem 0;
+  padding: 0.75rem 0 0;
+  border-top: 0;
+}
+
+.chart-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 0.35rem;
+}
+
+.chart-topline > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.chart-eyebrow,
+.chart-range-label {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.chart-topline strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 760;
+}
+
+.chart-topline strong span {
+  font-weight: 650;
+}
+
+.chart-container {
+  height: 380px;
+  margin: 0.25rem 0 0;
+  padding: 0.35rem 0 0.2rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(0, 200, 5, 0.035), transparent 34%),
+    #ffffff;
+}
+
+.chart-container canvas {
+  cursor: crosshair;
+}
+
+.chart-empty {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+
+.chart-empty p {
+  margin: 0;
+}
+
+.chart-range-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 44px;
+  margin-top: 0.2rem;
+  padding: 0 0.25rem;
+  overflow-x: auto;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.chart-range-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 42px;
+  padding: 0 0.65rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  font-weight: 760;
+  transition: color var(--transition-base), opacity var(--transition-base);
+}
+
+.chart-range-tab::after {
+  content: "";
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0;
+  left: 0.6rem;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: transparent;
+}
+
+.chart-range-tab:hover,
+.chart-range-tab:focus-visible,
+.chart-range-tab.active {
+  color: var(--color-success);
+}
+
+.chart-range-tab.active::after {
+  background: var(--color-success);
+}
+
+.chart-range-tab:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.chart-loading {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 3rem;
+  padding: 0.32rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .stock-chart-section {
+    margin-right: -0.1rem;
+    margin-left: -0.1rem;
+    padding-top: 0.45rem;
+  }
+
+  .chart-topline {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .chart-container {
+    height: 310px;
+  }
+
+  .chart-range-tabs {
+    gap: 0.05rem;
+    padding: 0;
+  }
+
+  .chart-range-tab {
+    min-width: 42px;
+    padding: 0 0.45rem;
+    font-size: var(--font-size-xs);
   }
 }

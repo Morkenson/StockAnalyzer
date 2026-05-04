@@ -1,4 +1,4 @@
-.PHONY: help test coverage backend-test backend-coverage frontend-test coverage-summary clean-coverage
+.PHONY: help test coverage backend-test backend-coverage frontend-test coverage-summary clean-coverage up down build rebuild logs ps backend-shell frontend-shell clean
 
 help:
 	@echo "Available targets:"
@@ -8,6 +8,13 @@ help:
 	@echo "  make backend-coverage  Run backend pytest suite with coverage"
 	@echo "  make frontend-test     Run frontend Jest suite with coverage"
 	@echo "  make clean-coverage    Remove generated coverage output"
+	@echo "  make up                Start Docker services"
+	@echo "  make down              Stop Docker services"
+	@echo "  make build             Build Docker images"
+	@echo "  make rebuild           Rebuild and start Docker services"
+	@echo "  make logs              Follow Docker service logs"
+	@echo "  make ps                Show Docker service status"
+	@echo "  make clean             Stop Docker services and remove volumes"
 
 test: coverage
 
@@ -27,3 +34,27 @@ coverage-summary:
 
 clean-coverage:
 	-@powershell -NoProfile -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue coverage, backend/.coverage, backend/htmlcov, frontend/coverage"
+
+up:
+	docker compose up -d
+
+down:
+	docker compose down
+
+build:
+	docker compose up -d --build
+
+logs:
+	docker compose logs -f
+
+ps:
+	docker compose ps
+
+backend-shell:
+	docker compose exec backend sh
+
+frontend-shell:
+	docker compose exec frontend sh
+
+clean:
+	docker compose down --volumes --remove-orphans

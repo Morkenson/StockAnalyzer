@@ -332,11 +332,17 @@ export class StockService {
     symbol: string,
     startDate: Date,
     endDate: Date,
-    interval: '1d' | '1w' | '1m' = '1d',
-    forceRefresh: boolean = false
+    interval: '1min' | '5min' | '15min' | '30min' | '1h' | '1d' | '1w' | '1m' = '1d',
+    forceRefresh: boolean = false,
+    outputSize?: number
   ): Observable<StockHistoricalData[]> {
     // Map interval to backend format
     const intervalMap: { [key: string]: string } = {
+      '1min': '1min',
+      '5min': '5min',
+      '15min': '15min',
+      '30min': '30min',
+      '1h': '1h',
       '1d': '1day',
       '1w': '1week',
       '1m': '1month'
@@ -344,7 +350,7 @@ export class StockService {
 
     const backendInterval = intervalMap[interval] || '1day';
     const normalizedSymbol = symbol.trim().toUpperCase();
-    const cacheKeyStr = `${normalizedSymbol}_${interval}_${startDate.getTime()}_${endDate.getTime()}`;
+    const cacheKeyStr = `${normalizedSymbol}_${interval}_${outputSize || 'default'}`;
     const cacheKey = this.getCacheKey('historical', cacheKeyStr);
     
     // Check localStorage cache first
@@ -361,7 +367,10 @@ export class StockService {
       return memoryCached;
     }
 
-    const params = new HttpParams().set('interval', backendInterval);
+    let params = new HttpParams().set('interval', backendInterval);
+    if (outputSize) {
+      params = params.set('outputSize', String(outputSize));
+    }
 
     // Fetch from API
     const observable = this.http.get<ApiResponse<StockHistoricalData[] | StockHistoricalData>>(`${this.apiUrl}/stock/historical/${normalizedSymbol}`, { params })

@@ -19,7 +19,7 @@ import { StockChartComponent } from './components/shared/stock-chart.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
 import { DebtCalculatorComponent } from './components/debt-calculator.component';
-import { AssetsComponent } from './components/assets.component';
+import { NetWorthComponent } from './components/net-worth.component';
 import { SettingsComponent } from './components/settings.component';
 import { GlobalErrorHandler } from './services/global-error-handler.service';
 import { AuthInterceptor } from './services/auth.interceptor';
@@ -38,7 +38,7 @@ import { AuthInterceptor } from './services/auth.interceptor';
     LoginComponent,
     SignupComponent,
     DebtCalculatorComponent,
-    AssetsComponent,
+    NetWorthComponent,
     SettingsComponent
   ],
   imports: [

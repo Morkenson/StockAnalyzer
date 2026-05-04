@@ -171,3 +171,38 @@ async def test_get_stock_details_uses_profile_and_historical(monkeypatch):
     assert details.name == "Apple Inc."
     assert details.high_52_week == 12
     assert details.low_52_week == 8
+
+
+@pytest.mark.asyncio
+async def test_get_stock_details_falls_back_to_search_name_for_duplicate_symbol(monkeypatch):
+    async def fake_quote(symbol):
+        return StockQuote(symbol=symbol, price=10, change=1, change_percent=10, volume=100)
+
+    async def fake_history(symbol, interval, output_size):
+        return [
+            svc.StockHistoricalData(date=svc.datetime(2024, 1, 1), open=1, high=12, low=8, close=10, volume=1)
+        ]
+
+    FakeAsyncClient.responses = [
+        FakeResponse({"name": "IBIT", "exchange": ""}),
+        FakeResponse(
+            {
+                "data": [
+                    {
+                        "symbol": "IBIT",
+                        "instrument_name": "iShares Bitcoin Trust ETF",
+                        "exchange": "NASDAQ",
+                        "instrument_type": "ETF",
+                    }
+                ]
+            }
+        ),
+    ]
+    monkeypatch.setattr(svc, "get_stock_quote", fake_quote)
+    monkeypatch.setattr(svc, "get_historical_data", fake_history)
+    monkeypatch.setattr(svc.httpx, "AsyncClient", FakeAsyncClient)
+
+    details = await svc.get_stock_details("IBIT")
+
+    assert details.name == "iShares Bitcoin Trust ETF"
+    assert details.exchange == "NASDAQ"

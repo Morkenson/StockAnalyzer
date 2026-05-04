@@ -12,7 +12,8 @@ import { StockHistoricalData } from '../../models/stock.model';
       <canvas *ngIf="historicalData.length > 0" baseChart
         [data]="chartData"
         [options]="chartOptions"
-        [type]="chartType">
+        [type]="chartType"
+        aria-label="Stock price chart">
       </canvas>
     </div>
   `,
@@ -32,6 +33,20 @@ export class StockChartComponent implements OnInit, OnChanges {
   chartOptions: ChartConfiguration['options'] = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        top: 12,
+        right: 6,
+        bottom: 2,
+        left: 2
+      }
+    },
+    elements: {
+      line: {
+        borderCapStyle: 'round',
+        borderJoinStyle: 'round'
+      }
+    },
     plugins: {
       legend: {
         display: false
@@ -39,26 +54,44 @@ export class StockChartComponent implements OnInit, OnChanges {
       tooltip: {
         mode: 'index',
         intersect: false,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        padding: 12,
+        backgroundColor: '#101418',
+        borderColor: 'rgba(17, 24, 39, 0.08)',
+        borderWidth: 1,
+        displayColors: false,
+        padding: 10,
+        titleColor: '#f9fafb',
+        bodyColor: '#f9fafb',
         titleFont: {
-          size: 14,
-          weight: 'bold'
+          size: 12,
+          weight: 'normal'
         },
         bodyFont: {
-          size: 12
+          size: 13,
+          weight: 'bold'
         },
         callbacks: {
           title: (tooltipItems) => {
             const index = tooltipItems[0].dataIndex;
             if (index >= 0 && index < this.sortedData.length) {
               const date = new Date(this.sortedData[index].date);
-              return date.toLocaleDateString('en-US', { 
+              const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+              const dateText = date.toLocaleDateString('en-US', {
                 weekday: 'short',
-                month: 'short', 
+                month: 'short',
                 day: 'numeric',
                 year: 'numeric'
               });
+
+              if (!hasTime) {
+                return dateText;
+              }
+
+              const timeText = date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit'
+              });
+
+              return `${dateText}, ${timeText}`;
             }
             return '';
           },
@@ -67,23 +100,10 @@ export class StockChartComponent implements OnInit, OnChanges {
             const value = context.parsed.y;
             
             if (value === null || value === undefined || index < 0 || index >= this.sortedData.length) {
-              return `${context.dataset.label}: N/A`;
+              return 'Price: N/A';
             }
-            
-            const dataPoint = this.sortedData[index];
-            
-            // Show closing price in the main label
-            if (context.datasetIndex === 0) {
-              return [
-                `Close: $${value.toFixed(2)}`,
-                `Open: $${dataPoint.open.toFixed(2)}`,
-                `High: $${dataPoint.high.toFixed(2)}`,
-                `Low: $${dataPoint.low.toFixed(2)}`,
-                `Volume: ${dataPoint.volume.toLocaleString()}`
-              ];
-            }
-            
-            return `${context.dataset.label}: $${value.toFixed(2)}`;
+
+            return `Price: $${value.toFixed(2)}`;
           }
         }
       }
@@ -91,32 +111,42 @@ export class StockChartComponent implements OnInit, OnChanges {
     scales: {
       x: {
         display: true,
-        title: {
-          display: true,
-          text: 'Date',
-          font: {
-            size: 12,
-            weight: 'bold'
-          }
+        border: {
+          display: false
         },
         grid: {
           display: false
+        },
+        ticks: {
+          autoSkip: true,
+          color: '#7b8491',
+          font: {
+            size: 11,
+            weight: 600
+          },
+          maxRotation: 0,
+          maxTicksLimit: 8,
+          padding: 8
         }
       },
       y: {
-        display: true,
-        title: {
-          display: true,
-          text: 'Price ($)',
-          font: {
-            size: 12,
-            weight: 'bold'
-          }
+        position: 'right',
+        border: {
+          display: false
         },
         grid: {
-          color: 'rgba(0, 0, 0, 0.05)'
+          drawTicks: false,
+          color: 'rgba(17, 24, 39, 0.11)',
+          lineWidth: 1
         },
         ticks: {
+          color: '#64707d',
+          font: {
+            size: 11,
+            weight: 650
+          },
+          padding: 10,
+          maxTicksLimit: 7,
           callback: (value) => {
             return '$' + Number(value).toFixed(2);
           }
@@ -124,7 +154,7 @@ export class StockChartComponent implements OnInit, OnChanges {
       }
     },
     interaction: {
-      mode: 'nearest',
+      mode: 'index',
       axis: 'x',
       intersect: false
     }
@@ -150,28 +180,44 @@ export class StockChartComponent implements OnInit, OnChanges {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    // Prepare labels (dates)
+    const firstDate = new Date(this.sortedData[0].date);
+    const lastDate = new Date(this.sortedData[this.sortedData.length - 1].date);
+    const rangeMs = lastDate.getTime() - firstDate.getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
     const labels = this.sortedData.map(d => {
       const date = new Date(d.date);
+      if (rangeMs <= oneDayMs * 2) {
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      }
+      if (rangeMs >= oneDayMs * 330) {
+        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      }
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
 
-    // Prepare datasets - only show closing price line
+    const firstClose = this.sortedData[0].close;
+    const lastClose = this.sortedData[this.sortedData.length - 1].close;
+    const lineColor = lastClose >= firstClose ? '#00c805' : '#ff5000';
+    const fillColor = lastClose >= firstClose ? 'rgba(0, 200, 5, 0.13)' : 'rgba(255, 80, 0, 0.13)';
+
     this.chartData = {
       labels: labels,
       datasets: [
         {
           label: 'Price',
           data: this.sortedData.map(d => d.close),
-          borderColor: 'rgb(102, 126, 234)',
-          backgroundColor: 'rgba(102, 126, 234, 0.1)',
+          borderColor: lineColor,
+          backgroundColor: fillColor,
           fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointHoverRadius: 6,
-          pointBackgroundColor: 'rgb(102, 126, 234)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2
+          tension: 0.24,
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointBackgroundColor: lineColor,
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointHitRadius: 18
         }
       ]
     };

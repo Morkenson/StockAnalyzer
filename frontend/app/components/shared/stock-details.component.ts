@@ -5,6 +5,13 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { Stock, StockHistoricalData, Watchlist } from '../../models/stock.model';
 import { Subscription } from 'rxjs';
 
+type ChartRange = {
+  label: string;
+  interval: '1min' | '5min' | '30min' | '1d' | '1w';
+  outputSize: number;
+  daysBack: number;
+};
+
 @Component({
   selector: 'app-stock-details',
   template: `
@@ -12,9 +19,9 @@ import { Subscription } from 'rxjs';
       <section class="card stock-detail-hero">
         <div class="stock-header">
           <div class="stock-info">
-            <h1>{{ stock.symbol }}</h1>
-            <p class="stock-name">{{ stock.name }}</p>
-            <span class="stock-exchange">{{ stock.exchange }}</span>
+            <h1>{{ getStockTitle() }}</h1>
+            <p class="stock-name">{{ stock.symbol }}</p>
+            <span class="stock-exchange" *ngIf="shouldShowExchange()">{{ stock.exchange }}</span>
           </div>
           <div class="stock-price-section">
             <div class="stock-price" [class.positive]="stock.change && stock.change >= 0" 
@@ -32,7 +39,31 @@ import { Subscription } from 'rxjs';
         </div>
 
         <div class="stock-chart-section">
+          <div class="chart-topline">
+            <div>
+              <span class="chart-eyebrow">Price history</span>
+              <strong [class.positive]="chartChange >= 0" [class.negative]="chartChange < 0">
+                {{ chartChange >= 0 ? '+' : '' }}{{ chartChange | currency:'USD':'symbol':'1.2-2' }}
+                <span>({{ chartChangePercent >= 0 ? '+' : '' }}{{ chartChangePercent | number:'1.2-2' }}%)</span>
+              </strong>
+            </div>
+            <span class="chart-range-label">{{ selectedRange.label }}</span>
+          </div>
           <app-stock-chart [historicalData]="historicalData"></app-stock-chart>
+          <div class="chart-range-tabs" role="tablist" aria-label="Stock chart timeframe">
+            <button
+              *ngFor="let range of chartRanges"
+              type="button"
+              role="tab"
+              class="chart-range-tab"
+              [class.active]="range.label === selectedRange.label"
+              [attr.aria-selected]="range.label === selectedRange.label"
+              [disabled]="historicalLoading && range.label === selectedRange.label"
+              (click)="selectRange(range)">
+              {{ range.label }}
+            </button>
+          </div>
+          <div class="chart-loading" *ngIf="historicalLoading">Updating chart...</div>
         </div>
 
         <div class="stock-actions">
@@ -145,7 +176,20 @@ export class StockDetailsComponent implements OnInit, OnDestroy {
   symbol: string = '';
   watchlists: Watchlist[] = [];
   showDropdown = false;
+  historicalLoading = false;
+  chartChange = 0;
+  chartChangePercent = 0;
+  chartRanges: ChartRange[] = [
+    { label: '1D', interval: '1min', outputSize: 390, daysBack: 1 },
+    { label: '1W', interval: '30min', outputSize: 90, daysBack: 7 },
+    { label: '1M', interval: '1d', outputSize: 30, daysBack: 30 },
+    { label: '3M', interval: '1d', outputSize: 90, daysBack: 90 },
+    { label: '1Y', interval: '1d', outputSize: 252, daysBack: 365 },
+    { label: '5Y', interval: '1w', outputSize: 260, daysBack: 365 * 5 }
+  ];
+  selectedRange = this.chartRanges[2];
   private subscriptions = new Subscription();
+  private historicalDataCache = new Map<string, StockHistoricalData[]>();
 
   constructor(
     private route: ActivatedRoute,
@@ -164,6 +208,7 @@ export class StockDetailsComponent implements OnInit, OnDestroy {
 
     this.route.params.subscribe(params => {
       this.symbol = params['symbol'];
+      this.historicalDataCache.clear();
       this.loadStockData();
       this.checkWatchlistStatus();
     });
@@ -187,6 +232,20 @@ export class StockDetailsComponent implements OnInit, OnDestroy {
     this.showDropdown = !this.showDropdown;
   }
 
+  shouldShowStockName(): boolean {
+    const name = this.stock?.name?.trim();
+    return !!name && name.toUpperCase() !== this.symbol.toUpperCase();
+  }
+
+  getStockTitle(): string {
+    return this.shouldShowStockName() ? this.stock!.name : this.symbol;
+  }
+
+  shouldShowExchange(): boolean {
+    const exchange = this.stock?.exchange?.trim();
+    return !!exchange && exchange.toLowerCase() !== 'unknown';
+  }
+
   loadStockData(): void {
     this.loading = true;
     this.error = null;
@@ -204,19 +263,74 @@ export class StockDetailsComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Load historical data (last 30 days)
+    this.loadHistoricalData();
+  }
+
+  selectRange(range: ChartRange): void {
+    if (range.label === this.selectedRange.label) {
+      return;
+    }
+
+    this.selectedRange = range;
+    this.loadHistoricalData();
+  }
+
+  private loadHistoricalData(): void {
+    const cacheKey = this.getHistoricalCacheKey(this.selectedRange);
+    const cachedData = this.historicalDataCache.get(cacheKey);
+    if (cachedData) {
+      this.historicalData = cachedData;
+      this.updateChartChange();
+      this.historicalLoading = false;
+      return;
+    }
+
+    this.historicalLoading = true;
+
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
+    startDate.setDate(startDate.getDate() - this.selectedRange.daysBack);
 
-    this.stockService.getHistoricalData(this.symbol, startDate, endDate).subscribe({
+    this.stockService.getHistoricalData(
+      this.symbol,
+      startDate,
+      endDate,
+      this.selectedRange.interval,
+      false,
+      this.selectedRange.outputSize
+    ).subscribe({
       next: (data) => {
         this.historicalData = data;
+        this.historicalDataCache.set(cacheKey, data);
+        this.updateChartChange();
+        this.historicalLoading = false;
       },
       error: (err) => {
         console.error('Failed to load historical data:', err);
+        this.historicalLoading = false;
       }
     });
+  }
+
+  private getHistoricalCacheKey(range: ChartRange): string {
+    return `${this.symbol.toUpperCase()}_${range.label}_${range.interval}_${range.outputSize}`;
+  }
+
+  private updateChartChange(): void {
+    if (!this.historicalData || this.historicalData.length < 2) {
+      this.chartChange = this.stock?.change || 0;
+      this.chartChangePercent = this.stock?.changePercent || 0;
+      return;
+    }
+
+    const sorted = [...this.historicalData].sort((a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const firstClose = sorted[0].close;
+    const lastClose = sorted[sorted.length - 1].close;
+
+    this.chartChange = lastClose - firstClose;
+    this.chartChangePercent = firstClose ? (this.chartChange / firstClose) * 100 : 0;
   }
 
   private checkWatchlistStatus(): void {

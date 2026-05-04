@@ -43,6 +43,7 @@ class Account(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     id: str = ""
     name: str = ""
+    nickname: str | None = None
     account_number: str = ""
     type: str = ""
     brokerage_id: str = ""
@@ -59,3 +60,24 @@ class Portfolio(BaseModel):
     total_gain_loss: float = 0.0
     total_gain_loss_percent: float = 0.0
     currency: str = "USD"
+
+
+class RecurringInvestment(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    symbol: str = ""
+    account_id: str = ""
+    account_name: str = ""
+    amount: float = 0.0
+    currency: str = "USD"
+    frequency: str = ""
+    confidence: float = 0.0
+    occurrences: int = 0
+    last_date: str = ""
+    next_estimated_date: str | None = None
+    source: str = "inferred"
+
+
+class AccountPreferenceUpdate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    nickname: str | None = None
+    hidden: bool | None = None

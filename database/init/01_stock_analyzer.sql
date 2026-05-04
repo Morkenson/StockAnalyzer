@@ -84,3 +84,15 @@ CREATE TABLE IF NOT EXISTS snaptrade_user_secrets (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS snaptrade_account_preferences (
+  user_id VARCHAR(128) NOT NULL,
+  account_id VARCHAR(128) NOT NULL,
+  nickname VARCHAR(255),
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (user_id, account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snaptrade_account_preferences_user_id ON snaptrade_account_preferences(user_id);

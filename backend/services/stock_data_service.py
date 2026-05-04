@@ -72,6 +72,12 @@ def _parse_int(val: Any, default: int = 0) -> int:
         return default
 
 
+def _needs_name_fallback(symbol: str, name: str | None) -> bool:
+    normalized_symbol = (symbol or "").strip().upper()
+    normalized_name = (name or "").strip().upper()
+    return not normalized_name or normalized_name == normalized_symbol
+
+
 async def get_stock_quote(symbol: str, client: httpx.AsyncClient | None = None) -> StockQuote | None:
     _require_api_key()
     url = f"{TWELVE_DATA_API_URL}/quote?symbol={quote_plus(symbol)}&apikey={TWELVE_DATA_API_KEY}"
@@ -137,6 +143,23 @@ async def get_stock_details(symbol: str) -> StockDetails | None:
             details.high_52_week = _parse_decimal(profile.get("52_week_high") or profile.get("fifty_two_week_high")) or None
             details.low_52_week = _parse_decimal(profile.get("52_week_low") or profile.get("fifty_two_week_low")) or None
             details.average_volume = _parse_int(profile.get("average_volume")) or None
+    if _needs_name_fallback(symbol, details.name):
+        try:
+            search_results = await search_stocks(symbol)
+            exact_match = next(
+                (
+                    result for result in search_results
+                    if result.symbol.strip().upper() == symbol.strip().upper()
+                    and not _needs_name_fallback(symbol, result.name)
+                ),
+                None,
+            )
+            if exact_match:
+                details.name = exact_match.name
+                if not details.exchange:
+                    details.exchange = exact_match.exchange
+        except Exception as e:
+            logger.warning("Failed to get fallback name from search for %s: %s", symbol, e)
     if details.high_52_week is None or details.low_52_week is None:
         try:
             hist = await get_historical_data(symbol, "1day", 30)

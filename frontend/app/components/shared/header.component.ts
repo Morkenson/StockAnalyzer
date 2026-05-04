@@ -43,11 +43,8 @@ import { Subscription } from 'rxjs';
             <a routerLink="/portfolio" routerLinkActive="active">
               Portfolio
             </a>
-            <a routerLink="/debt-calculator" routerLinkActive="active">
-              Debt Calculator
-            </a>
-            <a routerLink="/assets" routerLinkActive="active">
-              Assets
+            <a routerLink="/networth" routerLinkActive="active">
+              Net Worth
             </a>
             <a routerLink="/settings" routerLinkActive="active">
               Settings
