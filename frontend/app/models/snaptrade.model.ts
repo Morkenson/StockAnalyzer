@@ -45,3 +45,43 @@ export interface RecurringInvestment {
   nextEstimatedDate?: string | null;
   source: string;
 }
+
+export interface DividendIncomeTotal {
+  currency: string;
+  annualIncome: number;
+  monthlyIncome: number;
+}
+
+export interface DividendIncomeAccount {
+  accountId: string;
+  accountName: string;
+  currency: string;
+  annualIncome: number;
+  monthlyIncome: number;
+  paymentCount: number;
+  lastPaymentDate?: string | null;
+}
+
+export interface DividendIncomeSymbol {
+  symbol: string;
+  currency: string;
+  currentQuantity: number;
+  annualIncome: number;
+  monthlyIncome: number;
+  averagePaymentPerShare: number;
+  paymentFrequency: string;
+  paymentsPerYear: number;
+  paymentCount: number;
+  lastPaymentDate?: string | null;
+}
+
+export interface DividendIncomeSummary {
+  userId: string;
+  lookbackDays: number;
+  totals: DividendIncomeTotal[];
+  accounts: DividendIncomeAccount[];
+  symbols: DividendIncomeSymbol[];
+  paymentCount: number;
+  lastPaymentDate?: string | null;
+  source: string;
+}

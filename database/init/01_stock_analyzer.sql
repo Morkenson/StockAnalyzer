@@ -108,3 +108,85 @@ CREATE TABLE IF NOT EXISTS snaptrade_account_preferences (
 );
 
 CREATE INDEX IF NOT EXISTS idx_snaptrade_account_preferences_user_id ON snaptrade_account_preferences(user_id);
+
+CREATE TABLE IF NOT EXISTS snaptrade_dividend_preferences (
+  user_id VARCHAR(128) NOT NULL,
+  symbol VARCHAR(32) NOT NULL,
+  currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+  payment_frequency VARCHAR(32) NOT NULL,
+  payments_per_year DECIMAL(8,2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (user_id, symbol, currency)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snaptrade_dividend_preferences_user_id ON snaptrade_dividend_preferences(user_id);
+
+CREATE TABLE IF NOT EXISTS plaid_items (
+  id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+  user_id VARCHAR(36) NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  plaid_item_id VARCHAR(128) NOT NULL,
+  access_token_encrypted TEXT NOT NULL,
+  transaction_cursor TEXT,
+  institution_id VARCHAR(128),
+  institution_name VARCHAR(255),
+  last_sync_started_at TIMESTAMP WITH TIME ZONE,
+  last_sync_at TIMESTAMP WITH TIME ZONE,
+  last_sync_error TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT uq_plaid_item_user_item UNIQUE (user_id, plaid_item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_plaid_items_user_id ON plaid_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_plaid_items_plaid_item_id ON plaid_items(plaid_item_id);
+
+CREATE TABLE IF NOT EXISTS plaid_accounts (
+  id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+  user_id VARCHAR(36) NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  item_id VARCHAR(36) NOT NULL REFERENCES plaid_items(id) ON DELETE CASCADE,
+  plaid_account_id VARCHAR(128) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  official_name VARCHAR(255),
+  mask VARCHAR(16),
+  type VARCHAR(80) NOT NULL,
+  subtype VARCHAR(80),
+  current_balance DECIMAL(14,2),
+  available_balance DECIMAL(14,2),
+  iso_currency_code VARCHAR(8),
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  balance_updated_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT uq_plaid_account_user_account UNIQUE (user_id, plaid_account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_plaid_accounts_user_id ON plaid_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_plaid_accounts_item_id ON plaid_accounts(item_id);
+CREATE INDEX IF NOT EXISTS idx_plaid_accounts_plaid_account_id ON plaid_accounts(plaid_account_id);
+
+CREATE TABLE IF NOT EXISTS cashflow_entries (
+  id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+  user_id VARCHAR(36) NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  source VARCHAR(24) NOT NULL DEFAULT 'manual',
+  type VARCHAR(16) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  merchant_name VARCHAR(255),
+  category VARCHAR(120) NOT NULL,
+  amount DECIMAL(14,2) NOT NULL,
+  date DATE NOT NULL,
+  plaid_item_id VARCHAR(128),
+  plaid_account_id VARCHAR(128),
+  plaid_transaction_id VARCHAR(128),
+  pending BOOLEAN NOT NULL DEFAULT FALSE,
+  removed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT uq_cashflow_user_plaid_transaction UNIQUE (user_id, plaid_transaction_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cashflow_entries_user_id ON cashflow_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_cashflow_entries_source ON cashflow_entries(source);
+CREATE INDEX IF NOT EXISTS idx_cashflow_entries_date ON cashflow_entries(date);
+CREATE INDEX IF NOT EXISTS idx_cashflow_entries_plaid_transaction_id ON cashflow_entries(plaid_transaction_id);
+CREATE INDEX IF NOT EXISTS idx_cashflow_entries_removed_at ON cashflow_entries(removed_at);

@@ -198,7 +198,7 @@ def _ensure_watchlist(db: Session, user_id: str, watchlist_id: str) -> Watchlist
 
 
 @router.post("/auth/signup", status_code=status.HTTP_201_CREATED)
-async def signup(payload: AuthCredentials, request: Request, response: Response, db: Session = Depends(get_db)):
+async def signup(payload: AuthCredentials, request: Request, db: Session = Depends(get_db)):
     _rate_limit(request, "signup", limit=5, window_seconds=300)
     if len(payload.password) < 12:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 12 characters")
@@ -210,8 +210,11 @@ async def signup(payload: AuthCredentials, request: Request, response: Response,
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
     db.refresh(user)
-    _set_auth_cookie(response, _create_access_token(user))
-    return ApiResponse(success=True, data={"user": _user_row(user)}).model_dump(by_alias=True)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
+    db.commit()
+    await email_service.send_otp_email(user.email, code)
+    return ApiResponse(success=True, data={"pendingUserId": user.id}).model_dump(by_alias=True)
 
 
 @router.post("/auth/signin")

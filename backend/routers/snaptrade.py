@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from database import get_db
 from db_models import AppUser
 from models.common import ApiResponse
-from models.snaptrade_models import AccountPreferenceUpdate, Portfolio
+from models.snaptrade_models import AccountPreferenceUpdate, DividendFrequencyPreferenceUpdate, Portfolio
 from routers.persistence import _current_user
 from services import account_preference_service as account_pref_svc
+from services import dividend_preference_service as dividend_pref_svc
 from services import snaptrade_service as snaptrade_svc
 from services import user_service as user_svc
 
@@ -29,6 +30,13 @@ def _get_user_id(request: Request, current_user: AppUser | None) -> str:
     if current_user is not None:
         return current_user.id
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def _auth_error_response(ex: HTTPException) -> JSONResponse:
+    return JSONResponse(
+        status_code=ex.status_code,
+        content=ApiResponse(success=False, message=str(ex.detail)).model_dump(by_alias=True),
+    )
 
 
 def _portfolio_redirect_uri(request: Request) -> str:
@@ -134,6 +142,8 @@ async def get_portfolio(
             status_code=ex.status_code,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
         )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
     except Exception as ex:
         logger.exception("Error fetching portfolio")
         return JSONResponse(
@@ -197,8 +207,85 @@ async def get_recurring_investments(
             status_code=ex.status_code,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
         )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
     except Exception as ex:
         logger.exception("Error fetching recurring investments")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.get("/dividend-income")
+async def get_dividend_income(
+    request: Request,
+    refresh: bool = False,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        user_secret = await user_svc.get_user_secret(user_id)
+        if not user_secret:
+            return JSONResponse(
+                status_code=404,
+                content=ApiResponse(
+                    success=False,
+                    message="No SnapTrade connection found. Please connect your account first.",
+                ).model_dump(by_alias=True),
+            )
+        portfolio = await snaptrade_svc.get_portfolio(user_id, user_secret, force_refresh=refresh)
+        visible_portfolio = await _apply_account_preferences(user_id, portfolio)
+        frequency_overrides = await dividend_pref_svc.get_preferences(user_id)
+        dividend_income = await snaptrade_svc.get_dividend_income(
+            user_id,
+            user_secret,
+            accounts=visible_portfolio.accounts,
+            force_refresh=refresh,
+            frequency_overrides=frequency_overrides,
+        )
+        return ApiResponse(success=True, data=dividend_income).model_dump(by_alias=True)
+    except snaptrade_svc.SnapTradeServiceError as ex:
+        logger.warning("SnapTrade dividend income request failed: %s", ex)
+        return JSONResponse(
+            status_code=ex.status_code,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error fetching dividend income")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.patch("/dividend-income/preferences")
+async def update_dividend_income_preference(
+    payload: DividendFrequencyPreferenceUpdate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        if not payload.symbol.strip():
+            raise ValueError("symbol is required")
+        preference = await dividend_pref_svc.update_preference(
+            user_id,
+            payload.symbol,
+            payload.payment_frequency,
+            currency=payload.currency,
+        )
+        snaptrade_svc.clear_user_cache(user_id)
+        return ApiResponse(success=True, data=preference).model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except Exception as ex:
+        logger.exception("Error updating dividend income preference")
         return JSONResponse(
             status_code=400,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),

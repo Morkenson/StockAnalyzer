@@ -12,7 +12,7 @@ if str(_backend_dir) not in sys.path:
 import pytest
 from fastapi.testclient import TestClient
 from main import app
-from services import account_preference_service, snaptrade_service, user_service
+from services import account_preference_service, dividend_preference_service, snaptrade_service, user_service
 
 
 @pytest.fixture
@@ -25,10 +25,14 @@ def client():
 def clear_user_secrets():
     user_service._user_secrets.clear()
     account_preference_service._preferences.clear()
+    dividend_preference_service._preferences.clear()
     snaptrade_service._portfolio_cache.clear()
     snaptrade_service._recurring_cache.clear()
+    snaptrade_service._dividend_income_cache.clear()
     yield
     user_service._user_secrets.clear()
     account_preference_service._preferences.clear()
+    dividend_preference_service._preferences.clear()
     snaptrade_service._portfolio_cache.clear()
     snaptrade_service._recurring_cache.clear()
+    snaptrade_service._dividend_income_cache.clear()

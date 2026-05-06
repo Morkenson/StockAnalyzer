@@ -4,7 +4,16 @@ from unittest.mock import AsyncMock, patch
 
 from db_models import AppUser
 from main import app
-from models.snaptrade_models import Account, Portfolio, Brokerage, Holding, RecurringInvestment, SnapTradeUser
+from models.snaptrade_models import (
+    Account,
+    Brokerage,
+    DividendIncomeSummary,
+    DividendIncomeTotal,
+    Holding,
+    Portfolio,
+    RecurringInvestment,
+    SnapTradeUser,
+)
 from routers.snaptrade import _optional_current_user
 from services.snaptrade_service import SnapTradeServiceError
 
@@ -31,6 +40,16 @@ MOCK_HOLDINGS = [Holding(symbol="AAPL", quantity=10, average_purchase_price=100,
 
 
 class TestGetPortfolio:
+    def test_requires_authentication(self):
+        app.dependency_overrides[_optional_current_user] = lambda: None
+        try:
+            resp = client.get("/api/snaptrade/portfolio", headers=HEADERS)
+        finally:
+            app.dependency_overrides[_optional_current_user] = lambda: FAKE_USER
+
+        assert resp.status_code == 401
+        assert resp.json()["message"] == "Authentication required"
+
     def test_no_user_secret_returns_404(self):
         with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value=None)):
             resp = client.get("/api/snaptrade/portfolio", headers=HEADERS)
@@ -185,6 +204,102 @@ class TestRecurringInvestments:
 
         assert resp.status_code == 200
         assert get_recurring.await_args.kwargs["force_refresh"] is True
+
+
+class TestDividendIncome:
+    def test_no_user_secret_returns_404(self):
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value=None)):
+            resp = client.get("/api/snaptrade/dividend-income", headers=HEADERS)
+
+        assert resp.status_code == 404
+
+    def test_success_applies_visible_accounts(self):
+        summary = DividendIncomeSummary(
+            user_id="user1",
+            totals=[DividendIncomeTotal(currency="USD", annual_income=120, monthly_income=10)],
+            payment_count=4,
+            last_payment_date="2026-04-01",
+        )
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value="secret")):
+            with patch(
+                "routers.snaptrade.snaptrade_svc.get_portfolio",
+                new=AsyncMock(return_value=MOCK_PORTFOLIO_WITH_ACCOUNTS.model_copy(deep=True)),
+            ) as get_portfolio:
+                with patch(
+                    "routers.snaptrade.account_pref_svc.get_preferences",
+                    new=AsyncMock(return_value={"acc1": {"nickname": "Trading", "hidden": False}, "acc2": {"hidden": True}}),
+                ):
+                    with patch("routers.snaptrade.dividend_pref_svc.get_preferences", new=AsyncMock(return_value={})):
+                        with patch(
+                            "routers.snaptrade.snaptrade_svc.get_dividend_income",
+                            new=AsyncMock(return_value=summary),
+                        ) as get_dividend_income:
+                            resp = client.get("/api/snaptrade/dividend-income", headers=HEADERS)
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["totals"][0]["annualIncome"] == 120
+        get_portfolio.assert_awaited_once_with("user1", "secret", force_refresh=False)
+        get_dividend_income.assert_awaited_once()
+        accounts = get_dividend_income.await_args.kwargs["accounts"]
+        assert [account.id for account in accounts] == ["acc1"]
+        assert accounts[0].nickname == "Trading"
+        assert get_dividend_income.await_args.kwargs["force_refresh"] is False
+        assert get_dividend_income.await_args.kwargs["frequency_overrides"] == {}
+
+    def test_refresh_bypasses_cache(self):
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value="secret")):
+            with patch(
+                "routers.snaptrade.snaptrade_svc.get_portfolio",
+                new=AsyncMock(return_value=Portfolio(user_id="user1", accounts=MOCK_ACCOUNTS)),
+            ) as get_portfolio:
+                with patch("routers.snaptrade.account_pref_svc.get_preferences", new=AsyncMock(return_value={})):
+                    with patch("routers.snaptrade.dividend_pref_svc.get_preferences", new=AsyncMock(return_value={})):
+                        with patch(
+                            "routers.snaptrade.snaptrade_svc.get_dividend_income",
+                            new=AsyncMock(return_value=DividendIncomeSummary(user_id="user1")),
+                        ) as get_dividend_income:
+                            resp = client.get("/api/snaptrade/dividend-income?refresh=true", headers=HEADERS)
+
+        assert resp.status_code == 200
+        get_portfolio.assert_awaited_once_with("user1", "secret", force_refresh=True)
+        assert get_dividend_income.await_args.kwargs["force_refresh"] is True
+
+    def test_update_frequency_preference(self):
+        with patch(
+            "routers.snaptrade.dividend_pref_svc.update_preference",
+            new=AsyncMock(
+                return_value={
+                    "symbol": "SCHD",
+                    "currency": "USD",
+                    "paymentFrequency": "monthly",
+                    "paymentsPerYear": 12,
+                }
+            ),
+        ) as update_preference:
+            with patch("routers.snaptrade.snaptrade_svc.clear_user_cache") as clear_cache:
+                resp = client.patch(
+                    "/api/snaptrade/dividend-income/preferences",
+                    json={"symbol": "schd", "currency": "usd", "paymentFrequency": "monthly"},
+                    headers=HEADERS,
+                )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["paymentFrequency"] == "monthly"
+        update_preference.assert_awaited_once_with("user1", "schd", "monthly", currency="usd")
+        clear_cache.assert_called_once_with("user1")
+
+    def test_update_frequency_preference_rejects_invalid_frequency(self):
+        with patch(
+            "routers.snaptrade.dividend_pref_svc.update_preference",
+            new=AsyncMock(side_effect=ValueError("paymentFrequency is invalid")),
+        ):
+            resp = client.patch(
+                "/api/snaptrade/dividend-income/preferences",
+                json={"symbol": "SCHD", "currency": "USD", "paymentFrequency": "sometimes"},
+                headers=HEADERS,
+            )
+
+        assert resp.status_code == 400
 
 
 class TestAccountPreferences:

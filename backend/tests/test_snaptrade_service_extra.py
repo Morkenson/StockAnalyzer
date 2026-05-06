@@ -1,5 +1,5 @@
 import pytest
-from datetime import date
+from datetime import date, timedelta
 
 from services import snaptrade_service as svc
 
@@ -271,6 +271,33 @@ def test_parse_holding_handles_current_snaptrade_position_shape():
     assert holding.currency == "CAD"
 
 
+def test_parse_dividend_activity_uses_absolute_nonzero_amount():
+    account = svc.Account(id="a1", name="Brokerage", account_number="", type="", brokerage_id="")
+
+    parsed = svc._parse_dividend_activity(
+        {
+            "symbol": {"symbol": {"symbol": "SCHD"}},
+            "type": "DIVIDEND",
+            "amount": "-12.34",
+            "trade_date": "2026-04-01T00:00:00Z",
+            "currency": {"code": "USD"},
+        },
+        account,
+    )
+
+    assert parsed
+    assert parsed["symbol"] == "SCHD"
+    assert parsed["amount"] == 12.34
+    assert parsed["currency"] == "USD"
+
+
+def test_parse_dividend_activity_ignores_zero_or_non_dividend():
+    account = svc.Account(id="a1", name="Brokerage", account_number="", type="", brokerage_id="")
+
+    assert svc._parse_dividend_activity({"type": "BUY", "amount": "10", "trade_date": "2026-04-01"}, account) is None
+    assert svc._parse_dividend_activity({"type": "DIVIDEND", "amount": "0", "trade_date": "2026-04-01"}, account) is None
+
+
 @pytest.mark.asyncio
 async def test_get_portfolio_sums_accounts_and_skips_failed_holdings(monkeypatch):
     accounts = [
@@ -360,3 +387,191 @@ async def test_get_recurring_investments_uses_cache(monkeypatch):
     assert first[0].symbol == "META"
     assert second[0].symbol == "META"
     assert calls["activities"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_dividend_income_sums_by_currency_account_and_symbol(monkeypatch):
+    today = date.today()
+    accounts = [
+        svc.Account(
+            id="a1",
+            name="Taxable",
+            nickname="Trading",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="SCHD", quantity=4)],
+        ),
+        svc.Account(
+            id="a2",
+            name="IRA",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="VAB.TO", quantity=5)],
+        ),
+    ]
+
+    async def fake_activities(user_id, user_secret, account_id, start_date=None, end_date=None, activity_type="BUY"):
+        assert activity_type == "DIVIDEND"
+        assert start_date == today - timedelta(days=365)
+        assert end_date == today
+        if account_id == "a1":
+            return [
+                {
+                    "symbol": {"symbol": "SCHD"},
+                    "type": "DIVIDEND",
+                    "amount": "-10.25",
+                    "units": "2",
+                    "trade_date": today.isoformat(),
+                    "currency": {"code": "USD"},
+                },
+                {
+                    "symbol": {"symbol": "SCHD"},
+                    "type": "DIVIDEND",
+                    "amount": "4.75",
+                    "units": "1",
+                    "trade_date": (today - timedelta(days=30)).isoformat(),
+                    "currency": {"code": "USD"},
+                },
+                {"symbol": "SCHD", "type": "DIVIDEND", "amount": "0", "trade_date": today.isoformat()},
+                {"symbol": "OLD", "type": "DIVIDEND", "amount": "99", "trade_date": today.isoformat()},
+            ]
+        return [
+            {
+                "symbol": {"symbol": "VAB.TO"},
+                "type": "DIVIDEND",
+                "amount": "7",
+                "units": "7",
+                "trade_date": (today - timedelta(days=10)).isoformat(),
+                "currency": {"code": "CAD"},
+            }
+        ]
+
+    monkeypatch.setattr(svc, "get_account_activities", fake_activities)
+
+    summary = await svc.get_dividend_income("u", "s", accounts=accounts)
+
+    assert [(total.currency, total.annual_income, total.monthly_income) for total in summary.totals] == [
+        ("CAD", 5.0, 0.42),
+        ("USD", 237.0, 19.75),
+    ]
+    assert summary.payment_count == 3
+    assert summary.last_payment_date == today.isoformat()
+    assert summary.accounts[1].account_name == "Trading"
+    assert summary.symbols[1].symbol == "SCHD"
+    assert summary.symbols[1].current_quantity == 4
+    assert summary.symbols[1].average_payment_per_share == 4.9375
+    assert summary.symbols[1].payment_frequency == "monthly"
+    assert summary.symbols[1].payments_per_year == 12
+    assert summary.symbols[1].payment_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_dividend_income_annualizes_quarterly_cadence(monkeypatch):
+    today = date.today()
+    accounts = [
+        svc.Account(
+            id="a1",
+            name="Taxable",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="VTI", quantity=10)],
+        )
+    ]
+
+    async def fake_activities(user_id, user_secret, account_id, start_date=None, end_date=None, activity_type="BUY"):
+        return [
+            {
+                "symbol": "VTI",
+                "type": "DIVIDEND",
+                "amount": "8",
+                "units": "10",
+                "trade_date": today.isoformat(),
+            },
+            {
+                "symbol": "VTI",
+                "type": "DIVIDEND",
+                "amount": "10",
+                "units": "10",
+                "trade_date": (today - timedelta(days=91)).isoformat(),
+            },
+        ]
+
+    monkeypatch.setattr(svc, "get_account_activities", fake_activities)
+
+    summary = await svc.get_dividend_income("u", "s", accounts=accounts)
+
+    assert summary.totals[0].annual_income == 36
+    assert summary.totals[0].monthly_income == 3
+    assert summary.symbols[0].payment_frequency == "quarterly"
+    assert summary.symbols[0].payments_per_year == 4
+    assert summary.symbols[0].average_payment_per_share == 0.9
+
+    overridden = await svc.get_dividend_income(
+        "u",
+        "s",
+        accounts=accounts,
+        force_refresh=True,
+        frequency_overrides={("VTI", "USD"): {"payment_frequency": "monthly", "payments_per_year": 12}},
+    )
+
+    assert overridden.totals[0].annual_income == 108
+    assert overridden.symbols[0].payment_frequency == "monthly"
+    assert overridden.symbols[0].payments_per_year == 12
+
+
+@pytest.mark.asyncio
+async def test_get_dividend_income_uses_cache_and_force_refresh(monkeypatch):
+    calls = {"activities": 0}
+    accounts = [
+        svc.Account(
+            id="a1",
+            name="Taxable",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="AAPL", quantity=1)],
+        )
+    ]
+
+    async def fake_activities(user_id, user_secret, account_id, start_date=None, end_date=None, activity_type="BUY"):
+        calls["activities"] += 1
+        return [
+            {
+                "symbol": {"symbol": "AAPL"},
+                "type": "DIVIDEND",
+                "amount": str(calls["activities"]),
+                "trade_date": date.today().isoformat(),
+            }
+        ]
+
+    monkeypatch.setattr(svc, "get_account_activities", fake_activities)
+
+    first = await svc.get_dividend_income("u", "s", accounts=accounts)
+    second = await svc.get_dividend_income("u", "s", accounts=accounts)
+    refreshed = await svc.get_dividend_income("u", "s", accounts=accounts, force_refresh=True)
+
+    assert first.totals[0].annual_income == 1
+    assert second.totals[0].annual_income == 1
+    assert refreshed.totals[0].annual_income == 2
+    assert calls["activities"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_dividend_income_returns_empty_without_current_holdings(monkeypatch):
+    calls = {"activities": 0}
+    accounts = [svc.Account(id="a1", name="Taxable", account_number="", type="", brokerage_id="")]
+
+    async def fake_activities(*args, **kwargs):
+        calls["activities"] += 1
+        return [{"symbol": "AAPL", "type": "DIVIDEND", "amount": "10", "trade_date": date.today().isoformat()}]
+
+    monkeypatch.setattr(svc, "get_account_activities", fake_activities)
+
+    summary = await svc.get_dividend_income("u", "s", accounts=accounts)
+
+    assert summary.totals == []
+    assert summary.symbols == []
+    assert calls["activities"] == 0

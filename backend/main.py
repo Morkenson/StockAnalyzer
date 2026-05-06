@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from database import SessionLocal, init_db
-from routers import persistence, stock, snaptrade
+from routers import cashflow, persistence, plaid, stock, snaptrade
 
 logging.basicConfig(
     level=logging.INFO,
@@ -90,6 +90,8 @@ app.add_middleware(
 app.include_router(stock.router, prefix="/api")
 app.include_router(snaptrade.router, prefix="/api")
 app.include_router(persistence.router, prefix="/api")
+app.include_router(plaid.router, prefix="/api")
+app.include_router(cashflow.router, prefix="/api")
 
 
 @app.get("/")

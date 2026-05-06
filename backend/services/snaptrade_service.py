@@ -11,12 +11,24 @@ from snaptrade_client import exceptions as snaptrade_exceptions
 from snaptrade_client import SnapTrade
 
 from config import SNAPTRADE_API_URL, SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY
-from models.snaptrade_models import Account, Brokerage, Holding, Portfolio, RecurringInvestment, SnapTradeUser
+from models.snaptrade_models import (
+    Account,
+    Brokerage,
+    DividendIncomeAccount,
+    DividendIncomeSummary,
+    DividendIncomeSymbol,
+    DividendIncomeTotal,
+    Holding,
+    Portfolio,
+    RecurringInvestment,
+    SnapTradeUser,
+)
 
 logger = logging.getLogger(__name__)
 PORTFOLIO_CACHE_TTL_SECONDS = 15 * 60
 _portfolio_cache: dict[str, tuple[float, Portfolio]] = {}
 _recurring_cache: dict[tuple[str, tuple[str, ...], int], tuple[float, list[RecurringInvestment]]] = {}
+_dividend_income_cache: dict[tuple[str, tuple[str, ...], int], tuple[float, DividendIncomeSummary]] = {}
 
 
 class SnapTradeServiceError(RuntimeError):
@@ -30,6 +42,9 @@ def clear_user_cache(user_id: str) -> None:
     for key in list(_recurring_cache):
         if key[0] == user_id:
             _recurring_cache.pop(key, None)
+    for key in list(_dividend_income_cache):
+        if key[0] == user_id:
+            _dividend_income_cache.pop(key, None)
 
 
 def _cache_active(expires_at: float) -> bool:
@@ -228,7 +243,10 @@ def _parse_activity_date(value: object) -> date | None:
 def _parse_activity_symbol(element: dict) -> str:
     symbol = element.get("symbol")
     if isinstance(symbol, dict):
-        return str(symbol.get("symbol") or symbol.get("raw_symbol") or "")
+        nested_symbol = symbol.get("symbol")
+        if isinstance(nested_symbol, dict):
+            return str(nested_symbol.get("symbol") or nested_symbol.get("raw_symbol") or "")
+        return str(nested_symbol or symbol.get("raw_symbol") or "")
     option_symbol = element.get("option_symbol")
     if isinstance(option_symbol, dict):
         return str(option_symbol.get("ticker") or "")
@@ -262,6 +280,62 @@ def _parse_buy_activity(element: dict, account: Account) -> dict[str, object] | 
         "currency": _parse_activity_currency(element),
         "date": activity_date,
     }
+
+
+def _parse_dividend_activity(element: dict, account: Account) -> dict[str, object] | None:
+    activity_type = str(element.get("type", "")).upper()
+    if "DIVIDEND" not in activity_type:
+        return None
+    activity_date = _parse_activity_date(element.get("trade_date") or element.get("tradeDate"))
+    amount = abs(_parse_float(element.get("amount")))
+    if not activity_date or amount == 0:
+        return None
+    symbol = _parse_activity_symbol(element).strip().upper() or "UNKNOWN"
+    return {
+        "account_id": account.id,
+        "account_name": account.nickname or account.name,
+        "symbol": symbol,
+        "amount": amount,
+        "activity_quantity": _parse_float(element.get("units") or element.get("quantity")),
+        "currency": _parse_activity_currency(element),
+        "date": activity_date,
+    }
+
+
+def _current_holdings_by_account_symbol(accounts: list[Account]) -> dict[tuple[str, str], float]:
+    holdings: dict[tuple[str, str], float] = {}
+    for account in accounts:
+        for holding in account.holdings:
+            symbol = holding.symbol.strip().upper()
+            if not symbol or holding.quantity <= 0:
+                continue
+            key = (account.id, symbol)
+            holdings[key] = holdings.get(key, 0.0) + holding.quantity
+    return holdings
+
+
+def _current_holding_symbols(accounts: list[Account]) -> set[str]:
+    symbols: set[str] = set()
+    for account in accounts:
+        for holding in account.holdings:
+            symbol = holding.symbol.strip().upper()
+            if symbol and holding.quantity > 0:
+                symbols.add(symbol)
+    return symbols
+
+
+def _current_holding_cache_key(accounts: list[Account]) -> tuple[str, ...]:
+    account_symbols = []
+    for account in accounts:
+        symbols = ",".join(
+            sorted(
+                holding.symbol.strip().upper()
+                for holding in account.holdings
+                if holding.symbol and holding.quantity > 0
+            )
+        )
+        account_symbols.append(f"{account.id}:{symbols}")
+    return tuple(sorted(account_symbols))
 
 
 def _frequency_from_interval(days: float) -> tuple[str, int] | None:
@@ -324,6 +398,187 @@ def _infer_recurring_from_buys(buys: list[dict[str, object]]) -> list[RecurringI
             )
         )
     return sorted(inferred, key=lambda item: (item.account_name, item.symbol))
+
+
+def _income_total(amount: float, currency: str) -> DividendIncomeTotal:
+    annual = round(amount, 2)
+    return DividendIncomeTotal(
+        currency=currency,
+        annual_income=annual,
+        monthly_income=round(annual / 12, 2),
+    )
+
+
+def _dividend_frequency_from_dates(dates: list[date]) -> tuple[str, float]:
+    ordered = sorted(dates)
+    if len(ordered) < 2:
+        return "annual", 1
+    intervals = [
+        (ordered[i] - ordered[i - 1]).days
+        for i in range(1, len(ordered))
+        if ordered[i] > ordered[i - 1]
+    ]
+    if not intervals:
+        return "annual", 1
+    typical_days = median(intervals)
+    if 5 <= typical_days <= 9:
+        return "weekly", 52
+    if 12 <= typical_days <= 17:
+        return "biweekly", 26
+    if 25 <= typical_days <= 35:
+        return "monthly", 12
+    if 75 <= typical_days <= 105:
+        return "quarterly", 4
+    if 165 <= typical_days <= 200:
+        return "semiannual", 2
+    if 320 <= typical_days <= 410:
+        return "annual", 1
+    return "historical", len(ordered)
+
+
+def _summarize_dividend_income(
+    user_id: str,
+    dividends: list[dict[str, object]],
+    lookback_days: int,
+    frequency_overrides: dict[tuple[str, str], dict[str, object]] | None = None,
+) -> DividendIncomeSummary:
+    frequency_overrides = frequency_overrides or {}
+    position_groups: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for dividend in dividends:
+        currency = str(dividend["currency"] or "USD")
+        position_groups.setdefault((str(dividend["position_key"]), currency), []).append(dividend)
+
+    totals_by_currency: dict[str, float] = {}
+    accounts_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    symbols_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    last_payment: date | None = None
+
+    for (_position_key, currency), items in position_groups.items():
+        dates = [item["date"] for item in items if isinstance(item["date"], date)]
+        if not dates:
+            continue
+        frequency, payments_per_year = _dividend_frequency_from_dates(dates)
+        average_payment = sum(float(item["amount"]) for item in items) / len(items)
+        payment_count = len(items)
+        payment_date = max(dates)
+        first_item = items[-1]
+        account_id = str(first_item["account_id"])
+        account_name = str(first_item["account_name"])
+        symbol = str(first_item["symbol"])
+        current_quantity = float(first_item["current_quantity"])
+        override = frequency_overrides.get((symbol, currency))
+        if override:
+            frequency = str(override["payment_frequency"])
+            payments_per_year = float(override["payments_per_year"])
+        annual_estimate = average_payment * payments_per_year
+        average_payment_per_share = (
+            sum(float(item.get("payout_per_share") or 0) for item in items) / len(items)
+            if items
+            else 0.0
+        )
+
+        totals_by_currency[currency] = totals_by_currency.get(currency, 0.0) + annual_estimate
+        if last_payment is None or payment_date > last_payment:
+            last_payment = payment_date
+
+        account_key = (account_id, currency)
+        account_total = accounts_by_key.setdefault(
+            account_key,
+            {
+                "account_id": account_id,
+                "account_name": account_name,
+                "currency": currency,
+                "amount": 0.0,
+                "payment_count": 0,
+                "last_payment_date": None,
+            },
+        )
+        account_total["amount"] = float(account_total["amount"]) + annual_estimate
+        account_total["payment_count"] = int(account_total["payment_count"]) + payment_count
+        if account_total["last_payment_date"] is None or payment_date > account_total["last_payment_date"]:
+            account_total["last_payment_date"] = payment_date
+
+        symbol_key = (symbol, currency)
+        symbol_total = symbols_by_key.setdefault(
+            symbol_key,
+            {
+                "symbol": symbol,
+                "currency": currency,
+                "amount": 0.0,
+                "current_quantity": 0.0,
+                "average_payment_per_share_total": 0.0,
+                "payments_per_year": 0.0,
+                "frequency_counts": {},
+                "payment_count": 0,
+                "last_payment_date": None,
+            },
+        )
+        symbol_total["amount"] = float(symbol_total["amount"]) + annual_estimate
+        symbol_total["current_quantity"] = float(symbol_total["current_quantity"]) + current_quantity
+        symbol_total["average_payment_per_share_total"] = (
+            float(symbol_total["average_payment_per_share_total"]) + (average_payment_per_share * current_quantity)
+        )
+        symbol_total["payments_per_year"] = max(float(symbol_total["payments_per_year"]), payments_per_year)
+        frequency_counts = symbol_total["frequency_counts"]
+        if isinstance(frequency_counts, dict):
+            frequency_counts[frequency] = int(frequency_counts.get(frequency, 0)) + 1
+        symbol_total["payment_count"] = int(symbol_total["payment_count"]) + payment_count
+        if symbol_total["last_payment_date"] is None or payment_date > symbol_total["last_payment_date"]:
+            symbol_total["last_payment_date"] = payment_date
+
+    account_rows = []
+    for row in accounts_by_key.values():
+        total = _income_total(float(row["amount"]), str(row["currency"]))
+        payment_date = row["last_payment_date"]
+        account_rows.append(
+            DividendIncomeAccount(
+                account_id=str(row["account_id"]),
+                account_name=str(row["account_name"]),
+                currency=total.currency,
+                annual_income=total.annual_income,
+                monthly_income=total.monthly_income,
+                payment_count=int(row["payment_count"]),
+                last_payment_date=payment_date.isoformat() if isinstance(payment_date, date) else None,
+            )
+        )
+
+    symbol_rows = []
+    for row in symbols_by_key.values():
+        total = _income_total(float(row["amount"]), str(row["currency"]))
+        payment_date = row["last_payment_date"]
+        current_quantity = float(row["current_quantity"])
+        average_payment_per_share = float(row["average_payment_per_share_total"]) / current_quantity if current_quantity else 0.0
+        frequency_counts = row["frequency_counts"]
+        payment_frequency = "unknown"
+        if isinstance(frequency_counts, dict) and frequency_counts:
+            payment_frequency = sorted(frequency_counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+        symbol_rows.append(
+            DividendIncomeSymbol(
+                symbol=str(row["symbol"]),
+                currency=total.currency,
+                current_quantity=round(current_quantity, 6),
+                annual_income=total.annual_income,
+                monthly_income=total.monthly_income,
+                average_payment_per_share=round(average_payment_per_share, 4),
+                payment_frequency=payment_frequency,
+                payments_per_year=float(row["payments_per_year"]),
+                payment_count=int(row["payment_count"]),
+                last_payment_date=payment_date.isoformat() if isinstance(payment_date, date) else None,
+            )
+        )
+
+    return DividendIncomeSummary(
+        user_id=user_id,
+        lookback_days=lookback_days,
+        totals=sorted(
+            (_income_total(amount, currency) for currency, amount in totals_by_currency.items()),
+            key=lambda item: item.currency,
+        ),
+        accounts=sorted(account_rows, key=lambda item: (item.currency, -item.annual_income, item.account_name)),
+        symbols=sorted(symbol_rows, key=lambda item: (item.currency, -item.annual_income, item.symbol)),
+        payment_count=len(dividends),
+        last_payment_date=last_payment.isoformat() if last_payment else None,
+    )
 
 
 async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
@@ -440,6 +695,83 @@ async def get_recurring_investments(
         [item.model_copy(deep=True) for item in recurring],
     )
     return recurring
+
+
+async def get_dividend_income(
+    user_id: str,
+    user_secret: str,
+    accounts: list[Account] | None = None,
+    lookback_days: int = 365,
+    force_refresh: bool = False,
+    frequency_overrides: dict[tuple[str, str], dict[str, object]] | None = None,
+) -> DividendIncomeSummary:
+    accounts = accounts if accounts is not None else await get_accounts(user_id, user_secret)
+    current_holdings = _current_holdings_by_account_symbol(accounts)
+    cache_key = (user_id, _current_holding_cache_key(accounts), lookback_days)
+    cached = _dividend_income_cache.get(cache_key)
+    if cached and not force_refresh and _cache_active(cached[0]):
+        return cached[1].model_copy(deep=True)
+    if not current_holdings:
+        summary = _summarize_dividend_income(user_id, [], lookback_days, frequency_overrides=frequency_overrides)
+        _dividend_income_cache[cache_key] = (
+            time.monotonic() + PORTFOLIO_CACHE_TTL_SECONDS,
+            summary.model_copy(deep=True),
+        )
+        return summary
+
+    end = date.today()
+    start = end - timedelta(days=lookback_days)
+    activity_results = await asyncio.gather(
+        *(
+            get_account_activities(
+                user_id,
+                user_secret,
+                account.id,
+                start_date=start,
+                end_date=end,
+                activity_type="DIVIDEND",
+            )
+            for account in accounts
+        ),
+        return_exceptions=True,
+    )
+
+    dividends: list[dict[str, object]] = []
+    for account, activities in zip(accounts, activity_results):
+        if isinstance(activities, Exception):
+            logger.warning("Dividend activities failed for account %s: %s", account.id, activities)
+            continue
+        for activity in activities:
+            if not isinstance(activity, dict):
+                continue
+            parsed = _parse_dividend_activity(activity, account)
+            if not parsed:
+                continue
+            symbol = str(parsed["symbol"]).upper()
+            position_key = (account.id, symbol)
+            current_quantity = current_holdings.get(position_key, 0.0)
+            if not current_quantity:
+                continue
+            activity_quantity = float(parsed.get("activity_quantity") or 0)
+            reference_quantity = activity_quantity if activity_quantity > 0 else current_quantity
+            payout_per_share = float(parsed["amount"]) / reference_quantity if reference_quantity else 0.0
+            parsed["amount"] = payout_per_share * current_quantity
+            parsed["current_quantity"] = current_quantity
+            parsed["payout_per_share"] = payout_per_share
+            parsed["position_key"] = f"{account.id}:{symbol}"
+            dividends.append(parsed)
+
+    summary = _summarize_dividend_income(
+        user_id,
+        dividends,
+        lookback_days,
+        frequency_overrides=frequency_overrides,
+    )
+    _dividend_income_cache[cache_key] = (
+        time.monotonic() + PORTFOLIO_CACHE_TTL_SECONDS,
+        summary.model_copy(deep=True),
+    )
+    return summary
 
 
 async def get_portfolio(user_id: str, user_secret: str, force_refresh: bool = False) -> Portfolio:

@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { SnapTradeService } from '../services/snaptrade.service';
-import { Portfolio, Account, RecurringInvestment } from '../models/snaptrade.model';
+import { Portfolio, Account, RecurringInvestment, DividendIncomeSummary, DividendIncomeTotal } from '../models/snaptrade.model';
 import { Router } from '@angular/router';
 
 @Component({
@@ -53,6 +53,78 @@ import { Router } from '@angular/router';
           <div class="summary-item">
             <label>Accounts</label>
             <div class="value">{{ (portfolio.accounts && portfolio.accounts.length) || 0 }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card dividend-income-card" *ngIf="portfolio && (dividendLoading || dividendIncome || dividendError)">
+        <div class="card-header">
+          <div>
+            <span>Estimated Dividend Income</span>
+            <p>Average historical payouts applied to current holdings</p>
+          </div>
+        </div>
+        <div class="loading-state compact" *ngIf="dividendLoading">
+          <div class="spinner"></div>
+          <p>Checking dividend activity...</p>
+        </div>
+        <div class="error-message compact" *ngIf="dividendError && !dividendLoading">
+          <p>{{ dividendError }}</p>
+        </div>
+        <div *ngIf="!dividendLoading && !dividendError && dividendIncome">
+          <div class="dividend-income-summary">
+            <div class="summary-item dividend-primary">
+              <label>Annual Income</label>
+              <div class="value">{{ formatDividendMoney(getPrimaryDividendTotal()?.annualIncome, getPrimaryDividendTotal()?.currency) }}</div>
+            </div>
+            <div class="summary-item">
+              <label>Monthly Estimate</label>
+              <div class="value">{{ formatDividendMoney(getPrimaryDividendTotal()?.monthlyIncome, getPrimaryDividendTotal()?.currency) }}</div>
+            </div>
+            <div class="summary-item">
+              <label>Dividend Holdings</label>
+              <div class="value">{{ getDividendHoldingCount() }}</div>
+            </div>
+            <div class="summary-item">
+              <label>Last Payment</label>
+              <div class="value compact-value">{{ formatDate(dividendIncome.lastPaymentDate) }}</div>
+            </div>
+          </div>
+
+          <div class="dividend-currency-list" *ngIf="dividendIncome.totals.length > 1">
+            <span *ngFor="let total of dividendIncome.totals">
+              {{ total.currency }} {{ formatDividendMoney(total.annualIncome, total.currency) }} annually
+            </span>
+          </div>
+
+          <div class="dividend-income-empty" *ngIf="!hasDividendIncome()">
+            <p>No dividend payments found in the last 12 months.</p>
+          </div>
+
+          <div class="dividend-symbol-list" *ngIf="hasDividendIncome()">
+            <div class="dividend-symbol-row" *ngFor="let item of dividendIncome.symbols">
+              <div>
+                <strong>{{ item.symbol }}</strong>
+                <p>{{ item.currentQuantity | number:'1.0-4' }} shares / {{ titleCase(item.paymentFrequency) }} / avg {{ formatDividendMoney(item.averagePaymentPerShare, item.currency) }} per share / last {{ formatDate(item.lastPaymentDate) }}</p>
+              </div>
+              <div class="dividend-frequency-control">
+                <span>Frequency</span>
+                <select
+                  [value]="item.paymentFrequency"
+                  [disabled]="savingDividendPreferenceKey === getDividendPreferenceKey(item.symbol, item.currency)"
+                  (change)="updateDividendFrequency(item.symbol, item.currency, $any($event.target).value)">
+                  <option *ngFor="let option of dividendFrequencyOptions" [value]="option.value">{{ option.label }}</option>
+                </select>
+              </div>
+              <div class="dividend-symbol-metric">
+                <span>Annual</span>
+                <strong>{{ formatDividendMoney(item.annualIncome, item.currency) }}</strong>
+              </div>
+              <div class="dividend-symbol-metric">
+                <span>Monthly</span>
+                <strong>{{ formatDividendMoney(item.monthlyIncome, item.currency) }}</strong>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -252,6 +324,18 @@ export class PortfolioComponent implements OnInit {
   recurringInvestments: RecurringInvestment[] = [];
   recurringLoading = false;
   recurringError: string | null = null;
+  dividendIncome: DividendIncomeSummary | null = null;
+  dividendLoading = false;
+  dividendError: string | null = null;
+  savingDividendPreferenceKey: string | null = null;
+  dividendFrequencyOptions = [
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'quarterly', label: 'Quarterly' },
+    { value: 'semiannual', label: 'Semiannual' },
+    { value: 'annual', label: 'Annual' },
+    { value: 'biweekly', label: 'Biweekly' },
+    { value: 'weekly', label: 'Weekly' }
+  ];
   linkingAccount = false;
   editingNicknameAccountId: string | null = null;
   savingAccountId: string | null = null;
@@ -277,6 +361,17 @@ export class PortfolioComponent implements OnInit {
     const amount = value || 0;
     const sign = showSign && amount >= 0 ? '+' : '';
     return `${sign}${this.moneyFormatter.format(amount)}`;
+  }
+
+  formatDividendMoney(value: number | null | undefined, currency: string | null | undefined): string {
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return formatter.format(value || 0);
   }
 
   titleCase(value: string | null | undefined): string {
@@ -309,6 +404,7 @@ export class PortfolioComponent implements OnInit {
         this.portfolio = portfolio;
         this.loading = false;
         this.loadRecurringInvestments(refresh);
+        this.loadDividendIncome(refresh);
         // Auto-expand first account by default
         if (portfolio.accounts && portfolio.accounts.length > 0) {
           this.expandedAccounts[0] = true;
@@ -319,6 +415,7 @@ export class PortfolioComponent implements OnInit {
           this.portfolio = null;
           this.error = null;
           this.recurringInvestments = [];
+          this.dividendIncome = null;
           this.loading = false;
           return;
         }
@@ -343,6 +440,24 @@ export class PortfolioComponent implements OnInit {
         this.recurringError = err.error?.message || err.message || 'Failed to load recurring buys.';
         this.recurringLoading = false;
         console.error('Error loading recurring investments:', err);
+      }
+    });
+  }
+
+  loadDividendIncome(refresh = false): void {
+    this.dividendLoading = true;
+    this.dividendError = null;
+
+    this.snapTradeService.getDividendIncome(refresh).subscribe({
+      next: (income) => {
+        this.dividendIncome = income;
+        this.dividendLoading = false;
+      },
+      error: (err) => {
+        this.dividendIncome = null;
+        this.dividendError = err.error?.message || err.message || 'Failed to load dividend income.';
+        this.dividendLoading = false;
+        console.error('Error loading dividend income:', err);
       }
     });
   }
@@ -432,6 +547,47 @@ export class PortfolioComponent implements OnInit {
       return 0;
     }
     return (totalGainLoss / (totalValue - totalGainLoss)) * 100;
+  }
+
+  getPrimaryDividendTotal(): DividendIncomeTotal | null {
+    if (!this.dividendIncome || !this.dividendIncome.totals || this.dividendIncome.totals.length === 0) {
+      return null;
+    }
+    return this.dividendIncome.totals.find(total => total.currency === 'USD') || this.dividendIncome.totals[0];
+  }
+
+  hasDividendIncome(): boolean {
+    return !!this.dividendIncome && !!this.dividendIncome.symbols && this.dividendIncome.symbols.length > 0;
+  }
+
+  getDividendHoldingCount(): number {
+    if (!this.dividendIncome || !this.dividendIncome.symbols) {
+      return 0;
+    }
+    const knownSymbols = this.dividendIncome.symbols.filter(item => item.symbol !== 'UNKNOWN');
+    return knownSymbols.length || this.dividendIncome.symbols.length;
+  }
+
+  getDividendPreferenceKey(symbol: string, currency: string): string {
+    return `${symbol}:${currency}`;
+  }
+
+  updateDividendFrequency(symbol: string, currency: string, paymentFrequency: string): void {
+    const preferenceKey = this.getDividendPreferenceKey(symbol, currency);
+    this.savingDividendPreferenceKey = preferenceKey;
+    this.dividendError = null;
+
+    this.snapTradeService.updateDividendIncomePreference({ symbol, currency, paymentFrequency }).subscribe({
+      next: () => {
+        this.savingDividendPreferenceKey = null;
+        this.loadDividendIncome(true);
+      },
+      error: (err) => {
+        this.savingDividendPreferenceKey = null;
+        this.dividendError = err.error?.message || err.message || 'Failed to update dividend frequency.';
+        console.error('Error updating dividend frequency:', err);
+      }
+    });
   }
 
   /**

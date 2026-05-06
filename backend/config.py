@@ -16,6 +16,14 @@ SNAPTRADE_API_URL = os.getenv("SNAPTRADE_API_URL", "https://api.snaptrade.com/ap
 SNAPTRADE_CLIENT_ID = os.getenv("SNAPTRADE_CLIENT_ID", "")
 SNAPTRADE_CONSUMER_KEY = os.getenv("SNAPTRADE_CONSUMER_KEY", "")
 
+# Plaid
+PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
+PLAID_SECRET = os.getenv("PLAID_SECRET", "")
+PLAID_ENV = os.getenv("PLAID_ENV", "sandbox")
+PLAID_PRODUCTS = os.getenv("PLAID_PRODUCTS", "transactions")
+PLAID_COUNTRY_CODES = os.getenv("PLAID_COUNTRY_CODES", "US")
+PLAID_TOKEN_ENCRYPTION_KEY = os.getenv("PLAID_TOKEN_ENCRYPTION_KEY", "")
+
 # Twelve Data
 TWELVE_DATA_API_URL = os.getenv("TWELVE_DATA_API_URL", "https://api.twelvedata.com")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")

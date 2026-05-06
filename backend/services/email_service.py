@@ -5,14 +5,13 @@ import os
 
 logger = logging.getLogger(__name__)
 
-_RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 _FROM_EMAIL = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
 
 
-def _send_otp_sync(to_email: str, code: str) -> None:
+def _send_otp_sync(api_key: str, to_email: str, code: str) -> None:
     import resend
 
-    resend.api_key = _RESEND_API_KEY
+    resend.api_key = api_key
     resend.Emails.send(
         {
             "from": _FROM_EMAIL,
@@ -37,7 +36,13 @@ def _send_otp_sync(to_email: str, code: str) -> None:
 
 
 async def send_otp_email(to_email: str, code: str) -> None:
-    if not _RESEND_API_KEY:
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
         logger.warning("[DEV] OTP for %s: %s", to_email, code)
         return
-    await asyncio.to_thread(_send_otp_sync, to_email, code)
+    try:
+        await asyncio.to_thread(_send_otp_sync, api_key, to_email, code)
+        logger.info("OTP email sent to %s", to_email)
+    except Exception:
+        logger.exception("Failed to send OTP email to %s — falling back to console", to_email)
+        logger.warning("[FALLBACK] OTP for %s: %s", to_email, code)

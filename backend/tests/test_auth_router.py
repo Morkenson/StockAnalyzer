@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 
@@ -5,14 +6,41 @@ def _email() -> str:
     return f"user-{uuid4()}@example.com"
 
 
-def test_signup_sets_http_only_cookie_and_me_returns_user(client):
-    email = _email()
-    response = client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})
+def _signup_and_login(client, email: str, password: str = "very-secure-pass") -> None:
+    """Sign up and complete OTP verification so the client has an auth cookie."""
+    last_code: list[str] = []
 
-    assert response.status_code == 201
-    assert response.json()["data"]["user"]["email"] == email
-    assert "access_token=" in response.headers["set-cookie"]
-    assert "HttpOnly" in response.headers["set-cookie"]
+    async def capture(to_email: str, code: str) -> None:
+        last_code.append(code)
+
+    with patch("services.email_service.send_otp_email", new=AsyncMock(side_effect=capture)):
+        resp = client.post("/api/auth/signup", json={"email": email, "password": password})
+
+    assert resp.status_code == 201
+    pending_user_id = resp.json()["data"]["pendingUserId"]
+    client.post("/api/auth/verify-otp", json={"pendingUserId": pending_user_id, "code": last_code[0]})
+
+
+def test_signup_requires_otp_then_cookie_and_me_returns_user(client):
+    email = _email()
+    last_code: list[str] = []
+
+    async def capture(to_email: str, code: str) -> None:
+        last_code.append(code)
+
+    with patch("services.email_service.send_otp_email", new=AsyncMock(side_effect=capture)):
+        signup = client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})
+
+    assert signup.status_code == 201
+    assert signup.json()["data"]["pendingUserId"]
+    assert "set-cookie" not in signup.headers
+
+    pending_user_id = signup.json()["data"]["pendingUserId"]
+    verify = client.post("/api/auth/verify-otp", json={"pendingUserId": pending_user_id, "code": last_code[0]})
+    assert verify.status_code == 200
+    assert verify.json()["data"]["user"]["email"] == email
+    assert "access_token=" in verify.headers["set-cookie"]
+    assert "HttpOnly" in verify.headers["set-cookie"]
 
     me = client.get("/api/auth/me")
     assert me.status_code == 200
@@ -25,7 +53,8 @@ def test_protected_routes_require_session(client):
 
 
 def test_authenticated_user_can_create_loan(client):
-    client.post("/api/auth/signup", json={"email": _email(), "password": "very-secure-pass"})
+    email = _email()
+    _signup_and_login(client, email)
 
     response = client.post(
         "/api/loans",
@@ -45,7 +74,8 @@ def test_authenticated_user_can_create_loan(client):
 
 
 def test_authenticated_user_can_create_asset(client):
-    client.post("/api/auth/signup", json={"email": _email(), "password": "very-secure-pass"})
+    email = _email()
+    _signup_and_login(client, email)
 
     response = client.post(
         "/api/assets",
@@ -68,8 +98,9 @@ def test_authenticated_user_can_create_asset(client):
 
 def test_password_reset_changes_password(client):
     email = _email()
-    client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})
-    client.post("/api/auth/signout")
+
+    with patch("services.email_service.send_otp_email", new=AsyncMock()):
+        client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})
 
     reset = client.post("/api/auth/request-password-reset", json={"email": email})
     assert reset.status_code == 200
@@ -83,3 +114,4 @@ def test_password_reset_changes_password(client):
 
     new_login = client.post("/api/auth/signin", json={"email": email, "password": "new-secure-pass"})
     assert new_login.status_code == 200
+    assert new_login.json()["data"]["pendingUserId"]

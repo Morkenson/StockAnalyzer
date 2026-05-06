@@ -4,6 +4,7 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import {
+  DividendIncomeSummary,
   Portfolio,
   RecurringInvestment
 } from '../models/snaptrade.model';
@@ -77,6 +78,40 @@ export class SnapTradeService {
         }),
         catchError(error => {
           console.error('Error fetching recurring investments:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  getDividendIncome(refresh = false): Observable<DividendIncomeSummary> {
+    return this.http.get<ApiResponse<DividendIncomeSummary>>(`${this.apiUrl}/dividend-income`, {
+      params: refresh ? { refresh: 'true' } : {}
+    })
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to load dividend income');
+        }),
+        catchError(error => {
+          console.error('Error fetching dividend income:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  updateDividendIncomePreference(preference: { symbol: string; currency: string; paymentFrequency: string }): Observable<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number }> {
+    return this.http.patch<ApiResponse<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number }>>(`${this.apiUrl}/dividend-income/preferences`, preference)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to update dividend income preference');
+        }),
+        catchError(error => {
+          console.error('Error updating dividend income preference:', error);
           return throwError(() => error);
         })
       );

@@ -65,11 +65,14 @@ export class AuthService {
     await firstValueFrom(this.initialized$.pipe(filter(Boolean), take(1)));
   }
 
-  async signUp(email: string, password: string): Promise<{ user: AppUser | null; error: any }> {
+  async signUp(email: string, password: string): Promise<{ user: AppUser | null; pendingUserId?: string; error: any }> {
     try {
       const response = await firstValueFrom(
         this.http.post<ApiResponse<AuthPayload>>(`${this.apiUrl}/auth/signup`, { email, password })
       );
+      if (response.data?.pendingUserId) {
+        return { user: null, pendingUserId: response.data.pendingUserId, error: null };
+      }
       if (!response.data?.user) {
         throw new Error(response.message || 'Failed to create account');
       }
@@ -148,8 +151,14 @@ export class AuthService {
     try {
       await firstValueFrom(this.http.post<ApiResponse<void>>(`${this.apiUrl}/auth/signout`, {}));
     } finally {
-      localStorage.removeItem(this.userKey);
-      this.currentUserSubject.next(null);
+      this.clearLocalSession();
+      this.router.navigate(['/login']);
+    }
+  }
+
+  handleUnauthorized(): void {
+    if (this.currentUserSubject.value) {
+      this.clearLocalSession();
       this.router.navigate(['/login']);
     }
   }
@@ -169,6 +178,11 @@ export class AuthService {
   private setUser(user: AppUser): void {
     localStorage.setItem(this.userKey, JSON.stringify(user));
     this.currentUserSubject.next(user);
+  }
+
+  private clearLocalSession(): void {
+    localStorage.removeItem(this.userKey);
+    this.currentUserSubject.next(null);
   }
 
   private normalizeError(error: any): Error {

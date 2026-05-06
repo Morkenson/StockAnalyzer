@@ -2,6 +2,8 @@ fastapi==0.115.5
 resend==2.10.0
 uvicorn[standard]==0.32.1
 httpx==0.28.1
+cryptography==43.0.3
+plaid-python==39.0.0
 snaptrade-python-sdk==11.0.187
 python-dotenv==1.0.1
 pydantic==2.10.3

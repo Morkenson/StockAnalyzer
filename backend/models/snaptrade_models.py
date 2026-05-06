@@ -77,7 +77,58 @@ class RecurringInvestment(BaseModel):
     source: str = "inferred"
 
 
+class DividendIncomeTotal(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    currency: str = "USD"
+    annual_income: float = 0.0
+    monthly_income: float = 0.0
+
+
+class DividendIncomeAccount(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    account_id: str = ""
+    account_name: str = ""
+    currency: str = "USD"
+    annual_income: float = 0.0
+    monthly_income: float = 0.0
+    payment_count: int = 0
+    last_payment_date: str | None = None
+
+
+class DividendIncomeSymbol(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    symbol: str = ""
+    currency: str = "USD"
+    current_quantity: float = 0.0
+    annual_income: float = 0.0
+    monthly_income: float = 0.0
+    average_payment_per_share: float = 0.0
+    payment_frequency: str = "unknown"
+    payments_per_year: float = 0.0
+    payment_count: int = 0
+    last_payment_date: str | None = None
+
+
+class DividendIncomeSummary(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    user_id: str = ""
+    lookback_days: int = 365
+    totals: List[DividendIncomeTotal] = Field(default_factory=list)
+    accounts: List[DividendIncomeAccount] = Field(default_factory=list)
+    symbols: List[DividendIncomeSymbol] = Field(default_factory=list)
+    payment_count: int = 0
+    last_payment_date: str | None = None
+    source: str = "average_historical_payout_current_holdings"
+
+
 class AccountPreferenceUpdate(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     nickname: str | None = None
     hidden: bool | None = None
+
+
+class DividendFrequencyPreferenceUpdate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    symbol: str = ""
+    currency: str = "USD"
+    payment_frequency: str = ""

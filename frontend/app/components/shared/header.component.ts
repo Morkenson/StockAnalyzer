@@ -46,6 +46,9 @@ import { Subscription } from 'rxjs';
             <a routerLink="/networth" routerLinkActive="active">
               Net Worth
             </a>
+            <a routerLink="/income-expenses" routerLinkActive="active">
+              Income
+            </a>
             <a routerLink="/settings" routerLinkActive="active">
               Settings
             </a>
