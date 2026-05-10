@@ -19,9 +19,9 @@ SNAPTRADE_CONSUMER_KEY = os.getenv("SNAPTRADE_CONSUMER_KEY", "")
 # Plaid
 PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
 PLAID_SECRET = os.getenv("PLAID_SECRET", "")
-PLAID_ENV = os.getenv("PLAID_ENV", "sandbox")
+PLAID_ENV = "production" if (os.getenv("APP_ENV") or "").lower() == "production" else "sandbox"
 PLAID_PRODUCTS = os.getenv("PLAID_PRODUCTS", "transactions")
-PLAID_COUNTRY_CODES = os.getenv("PLAID_COUNTRY_CODES", "US")
+PLAID_COUNTRY_CODES = "US"
 PLAID_TOKEN_ENCRYPTION_KEY = os.getenv("PLAID_TOKEN_ENCRYPTION_KEY", "")
 SNAPTRADE_SECRET_ENCRYPTION_KEY = os.getenv("SNAPTRADE_SECRET_ENCRYPTION_KEY", "")
 

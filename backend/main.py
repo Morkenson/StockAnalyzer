@@ -34,6 +34,33 @@ REQUIRED_PROD_ENV_VALUES = {
 
 FORBIDDEN_PROD_ENV_VARS = ("DEBUG_EXPOSE_RESET_TOKEN",)
 
+OPTIONAL_ENV_VARS = (
+    "SNAPTRADE_CLIENT_ID",
+    "SNAPTRADE_CONSUMER_KEY",
+    "PLAID_CLIENT_ID",
+    "PLAID_SECRET",
+    "TWELVE_DATA_API_KEY",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "COOKIE_SECURE",
+    "COOKIE_SAMESITE",
+    "FRONTEND_ORIGINS",
+    "SNAPTRADE_CALLBACK_REDIRECT",
+    "CORS_ORIGIN_REGEX",
+    "DATABASE_URL",
+    "PLAID_TOKEN_ENCRYPTION_KEY",
+    "SNAPTRADE_SECRET_ENCRYPTION_KEY",
+    "JWT_SECRET",
+)
+
+
+def _log_optional_env_vars() -> None:
+    unset = [name for name in OPTIONAL_ENV_VARS if not os.getenv(name)]
+    if unset:
+        logger.warning("env vars not set (features may be disabled or running with defaults): %s", ", ".join(unset))
+    else:
+        logger.info("all known env vars are set")
+
 
 def _validate_production_env() -> None:
     app_env = (os.getenv("APP_ENV") or "").lower()
@@ -70,6 +97,7 @@ def _validate_production_env() -> None:
 
 
 _validate_production_env()
+_log_optional_env_vars()
 
 from database import SessionLocal, init_db
 from routers import cashflow, persistence, plaid, stock, snaptrade
