@@ -1,7 +1,7 @@
 """Database setup for normal PostgreSQL/SQLite connections."""
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
@@ -26,6 +26,17 @@ def init_db() -> None:
     import db_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _apply_lightweight_migrations()
+
+
+def _apply_lightweight_migrations() -> None:
+    inspector = inspect(engine)
+    if "app_users" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("app_users")}
+    if "token_version" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE app_users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"))
 
 
 def get_db():

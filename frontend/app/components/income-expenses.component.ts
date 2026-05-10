@@ -506,6 +506,15 @@ export class IncomeExpensesComponent implements OnInit, OnDestroy {
     }
   }
 
+  async disconnectPlaidAccount(account: PlaidAccount): Promise<void> {
+    await this.disconnectPlaidInstitution({
+      itemId: account.itemId || account.id,
+      name: account.institutionName || account.name || 'Plaid',
+      accounts: [account],
+      totalBalance: account.currentBalance || 0
+    });
+  }
+
   async disconnectPlaidInstitution(group: InstitutionAccountGroup): Promise<void> {
     const anchorAccount = group.accounts[0];
     const label = group.name || 'this institution';

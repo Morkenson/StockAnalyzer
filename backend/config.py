@@ -23,6 +23,7 @@ PLAID_ENV = os.getenv("PLAID_ENV", "sandbox")
 PLAID_PRODUCTS = os.getenv("PLAID_PRODUCTS", "transactions")
 PLAID_COUNTRY_CODES = os.getenv("PLAID_COUNTRY_CODES", "US")
 PLAID_TOKEN_ENCRYPTION_KEY = os.getenv("PLAID_TOKEN_ENCRYPTION_KEY", "")
+SNAPTRADE_SECRET_ENCRYPTION_KEY = os.getenv("SNAPTRADE_SECRET_ENCRYPTION_KEY", "")
 
 # Twelve Data
 TWELVE_DATA_API_URL = os.getenv("TWELVE_DATA_API_URL", "https://api.twelvedata.com")

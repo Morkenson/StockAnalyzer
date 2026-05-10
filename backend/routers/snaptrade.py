@@ -1,5 +1,6 @@
 """SnapTrade API routes - user, connect, portfolio, accounts, brokerages."""
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -378,4 +379,5 @@ async def get_brokerages():
 
 @router.get("/callback")
 async def oauth_callback(code: str | None = None, state: str | None = None):
-    return RedirectResponse(url="http://localhost:4200/portfolio")
+    target = os.getenv("SNAPTRADE_CALLBACK_REDIRECT", "http://localhost:4200/portfolio")
+    return RedirectResponse(url=target)

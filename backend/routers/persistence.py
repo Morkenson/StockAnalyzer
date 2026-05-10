@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
@@ -19,6 +20,8 @@ from database import get_db
 from db_models import AppUser, Asset, Loan, PasswordResetToken, SigninOtp, Watchlist, WatchlistItem
 from services import email_service
 from models.common import ApiResponse
+
+logger = logging.getLogger(__name__)
 from models.persistence_models import (
     AssetCreate,
     AssetUpdate,
@@ -48,6 +51,8 @@ OTP_EXPIRE_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
 
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+_DUMMY_PASSWORD_HASH = hashlib.pbkdf2_hmac("sha256", b"dummy-password-for-timing-equalization", os.urandom(16), 200_000)
 
 
 def _now() -> datetime:
@@ -93,7 +98,13 @@ def _token_hash(token: str) -> str:
 def _create_access_token(user: AppUser) -> str:
     expires_at = _now() + timedelta(minutes=ACCESS_TOKEN_MINUTES)
     return jwt.encode(
-        {"sub": user.id, "email": user.email, "exp": expires_at, "iat": _now()},
+        {
+            "sub": user.id,
+            "email": user.email,
+            "tv": user.token_version or 0,
+            "exp": expires_at,
+            "iat": _now(),
+        },
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
     )
@@ -129,6 +140,8 @@ def _current_user(request: Request, db: Session = Depends(get_db)) -> AppUser:
     user = db.get(AppUser, payload.get("sub"))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    if int(payload.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
     return user
 
 
@@ -221,7 +234,12 @@ async def signup(payload: AuthCredentials, request: Request, db: Session = Depen
 async def signin(payload: AuthCredentials, request: Request, db: Session = Depends(get_db)):
     _rate_limit(request, "signin", limit=8, window_seconds=300)
     user = db.scalar(select(AppUser).where(AppUser.email == payload.email.strip().lower()))
-    if not user or not _verify_password(payload.password, user.password_hash):
+    if user:
+        password_ok = _verify_password(payload.password, user.password_hash)
+    else:
+        hashlib.pbkdf2_hmac("sha256", payload.password.encode("utf-8"), _DUMMY_PASSWORD_HASH, 200_000)
+        password_ok = False
+    if not user or not password_ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
     code = f"{secrets.randbelow(1_000_000):06d}"
@@ -266,7 +284,13 @@ async def resend_otp(payload: OtpResend, request: Request, db: Session = Depends
 
 
 @router.post("/auth/signout")
-async def signout(response: Response):
+async def signout(request: Request, response: Response, db: Session = Depends(get_db)):
+    try:
+        user = _current_user(request, db)
+        user.token_version = (user.token_version or 0) + 1
+        db.commit()
+    except HTTPException:
+        pass
     _clear_auth_cookie(response)
     return ApiResponse(success=True).model_dump(by_alias=True)
 
@@ -291,7 +315,11 @@ async def request_password_reset(payload: PasswordResetRequest, request: Request
             )
         )
         db.commit()
-    data = {"resetToken": reset_token} if reset_token and os.getenv("ENV", "development") != "production" else None
+    if reset_token and os.getenv("DEBUG_EXPOSE_RESET_TOKEN") == "1":
+        logger.warning("password reset token exposed in response (DEBUG_EXPOSE_RESET_TOKEN=1) for user_id=%s", user.id)
+        data = {"resetToken": reset_token}
+    else:
+        data = None
     return ApiResponse(success=True, data=data, message="If that email exists, a reset link will be sent.").model_dump(
         by_alias=True
     )
@@ -315,6 +343,7 @@ async def reset_password(payload: PasswordResetConfirm, request: Request, db: Se
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
     user.password_hash = _hash_password(payload.password)
+    user.token_version = (user.token_version or 0) + 1
     row.used_at = _now()
     db.commit()
     return ApiResponse(success=True, message="Password reset successfully").model_dump(by_alias=True)

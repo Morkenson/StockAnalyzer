@@ -68,9 +68,11 @@ def _require_config() -> None:
 
 
 def _fernet() -> Fernet:
-    seed = config.PLAID_TOKEN_ENCRYPTION_KEY or os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
+    seed = config.PLAID_TOKEN_ENCRYPTION_KEY
     if not seed:
-        raise PlaidConfigurationError("PLAID_TOKEN_ENCRYPTION_KEY or JWT_SECRET is required to store Plaid tokens.")
+        raise PlaidConfigurationError(
+            "PLAID_TOKEN_ENCRYPTION_KEY must be set to a dedicated secret (do not reuse JWT_SECRET)."
+        )
     key = base64.urlsafe_b64encode(hashlib.sha256(seed.encode("utf-8")).digest())
     return Fernet(key)
 
