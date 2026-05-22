@@ -13,13 +13,15 @@ import { StockHistoricalData } from '../../models/stock.model';
         [data]="chartData"
         [options]="chartOptions"
         [type]="chartType"
-        aria-label="Stock price chart">
+        [attr.aria-label]="ariaLabel">
       </canvas>
     </div>
   `,
 })
 export class StockChartComponent implements OnInit, OnChanges {
   @Input() historicalData: StockHistoricalData[] = [];
+  @Input() valueLabel = 'Price';
+  @Input() ariaLabel = 'Stock price chart';
 
   chartType: ChartType = 'line';
   chartData: ChartConfiguration['data'] = {
@@ -100,10 +102,10 @@ export class StockChartComponent implements OnInit, OnChanges {
             const value = context.parsed.y;
             
             if (value === null || value === undefined || index < 0 || index >= this.sortedData.length) {
-              return 'Price: N/A';
+              return `${this.valueLabel}: N/A`;
             }
 
-            return `Price: $${value.toFixed(2)}`;
+            return `${this.valueLabel}: $${value.toFixed(2)}`;
           }
         }
       }
@@ -205,12 +207,12 @@ export class StockChartComponent implements OnInit, OnChanges {
       labels: labels,
       datasets: [
         {
-          label: 'Price',
+          label: this.valueLabel,
           data: this.sortedData.map(d => d.close),
           borderColor: lineColor,
           backgroundColor: fillColor,
           fill: true,
-          tension: 0.24,
+          tension: 0.06,
           borderWidth: 3,
           pointRadius: 0,
           pointHoverRadius: 5,

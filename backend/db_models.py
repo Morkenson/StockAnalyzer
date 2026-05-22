@@ -23,6 +23,7 @@ class AppUser(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(Text)
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    otp_verified_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -124,6 +125,8 @@ class SnapTradeAccountPreference(Base):
     user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     account_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     nickname: Mapped[str | None] = mapped_column(String(255))
+    margin_balance: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    margin_interest_rate: Mapped[float | None] = mapped_column(Numeric(8, 4))
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -137,6 +140,37 @@ class SnapTradeDividendPreference(Base):
     currency: Mapped[str] = mapped_column(String(8), primary_key=True, default="USD")
     payment_frequency: Mapped[str] = mapped_column(String(32))
     payments_per_year: Mapped[float] = mapped_column(Numeric(8, 2))
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SnapTradeRecurringInvestmentPreference(Base):
+    __tablename__ = "snaptrade_recurring_investment_preferences"
+
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    currency: Mapped[str] = mapped_column(String(8), primary_key=True, default="USD")
+    amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    frequency: Mapped[str | None] = mapped_column(String(32))
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SnapTradePortfolioBalanceSnapshot(Base):
+    __tablename__ = "snaptrade_portfolio_balance_snapshots"
+    __table_args__ = (UniqueConstraint("user_id", "snapshot_date", name="uq_snaptrade_portfolio_snapshot_user_date"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    total_balance: Mapped[float] = mapped_column(Numeric(14, 2))
+    total_gain_loss: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    total_gain_loss_percent: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
+    account_count: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

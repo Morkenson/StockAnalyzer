@@ -9,10 +9,18 @@ from sqlalchemy.orm import Session
 from database import get_db
 from db_models import AppUser
 from models.common import ApiResponse
-from models.snaptrade_models import AccountPreferenceUpdate, DividendFrequencyPreferenceUpdate, Portfolio
+from models.snaptrade_models import (
+    AccountPreferenceUpdate,
+    DividendFrequencyPreferenceUpdate,
+    DividendPreferenceClearRequest,
+    Portfolio,
+    RecurringInvestmentPreferenceUpdate,
+)
 from routers.persistence import _current_user
 from services import account_preference_service as account_pref_svc
 from services import dividend_preference_service as dividend_pref_svc
+from services import portfolio_snapshot_service as portfolio_snapshot_svc
+from services import recurring_preference_service as recurring_pref_svc
 from services import snaptrade_service as snaptrade_svc
 from services import user_service as user_svc
 
@@ -40,6 +48,15 @@ def _auth_error_response(ex: HTTPException) -> JSONResponse:
     )
 
 
+async def _assert_account_owned_by_user(user_id: str, account_id: str) -> None:
+    user_secret = await user_svc.get_user_secret(user_id)
+    if not user_secret:
+        raise HTTPException(status_code=404, detail="No SnapTrade connection found. Please connect your account first.")
+    accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
+    if account_id not in {acc.id for acc in accounts}:
+        raise HTTPException(status_code=403, detail="Account not found")
+
+
 def _portfolio_redirect_uri(request: Request) -> str:
     origin = request.headers.get("origin")
     if origin:
@@ -57,6 +74,12 @@ async def _apply_account_preferences(user_id: str, portfolio: Portfolio) -> Port
         nickname = preference.get("nickname")
         if isinstance(nickname, str) and nickname.strip():
             account.nickname = nickname.strip()
+        margin_balance = preference.get("margin_balance")
+        if isinstance(margin_balance, (int, float)):
+            account.margin_balance = max(0, float(margin_balance))
+        margin_interest_rate = preference.get("margin_interest_rate")
+        if isinstance(margin_interest_rate, (int, float)):
+            account.margin_interest_rate = max(0, float(margin_interest_rate))
         visible_accounts.append(account)
 
     portfolio.accounts = visible_accounts
@@ -122,6 +145,7 @@ async def get_portfolio(
     request: Request,
     refresh: bool = False,
     current_user: AppUser | None = Depends(_optional_current_user),
+    db: Session = Depends(get_db),
 ):
     try:
         user_id = _get_user_id(request, current_user)
@@ -136,6 +160,7 @@ async def get_portfolio(
             )
         portfolio = await snaptrade_svc.get_portfolio(user_id, user_secret, force_refresh=refresh)
         portfolio = await _apply_account_preferences(user_id, portfolio)
+        portfolio_snapshot_svc.save_daily_snapshot(db, user_id, portfolio)
         return ApiResponse(success=True, data=portfolio).model_dump(by_alias=True)
     except snaptrade_svc.SnapTradeServiceError as ex:
         logger.warning("SnapTrade portfolio request failed: %s", ex)
@@ -147,6 +172,26 @@ async def get_portfolio(
         return _auth_error_response(ex)
     except Exception as ex:
         logger.exception("Error fetching portfolio")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.get("/portfolio/snapshots")
+async def get_portfolio_snapshots(
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        snapshots = portfolio_snapshot_svc.get_snapshots(db, user_id)
+        return ApiResponse(success=True, data=snapshots).model_dump(by_alias=True)
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error fetching portfolio snapshots")
         return JSONResponse(
             status_code=400,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
@@ -193,14 +238,16 @@ async def get_recurring_investments(
                     message="No SnapTrade connection found. Please connect your account first.",
                 ).model_dump(by_alias=True),
             )
-        accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
-        visible_portfolio = await _apply_account_preferences(user_id, Portfolio(user_id=user_id, accounts=accounts))
+        portfolio = await snaptrade_svc.get_portfolio(user_id, user_secret, force_refresh=refresh)
+        visible_portfolio = await _apply_account_preferences(user_id, portfolio)
         recurring = await snaptrade_svc.get_recurring_investments(
             user_id,
             user_secret,
             accounts=visible_portfolio.accounts,
             force_refresh=refresh,
         )
+        recurring_preferences = await recurring_pref_svc.get_preferences(user_id)
+        recurring = recurring_pref_svc.apply_preferences(recurring, recurring_preferences)
         return ApiResponse(success=True, data=recurring).model_dump(by_alias=True)
     except snaptrade_svc.SnapTradeServiceError as ex:
         logger.warning("SnapTrade recurring investments request failed: %s", ex)
@@ -212,6 +259,99 @@ async def get_recurring_investments(
         return _auth_error_response(ex)
     except Exception as ex:
         logger.exception("Error fetching recurring investments")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.patch("/recurring-investments/preferences")
+async def update_recurring_investment_preference(
+    payload: RecurringInvestmentPreferenceUpdate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, payload.account_id)
+        preference = await recurring_pref_svc.update_preference(
+            user_id,
+            payload.account_id,
+            payload.symbol,
+            currency=payload.currency,
+            amount=payload.amount,
+            frequency=payload.frequency,
+            hidden=payload.hidden,
+        )
+        return ApiResponse(success=True, data=preference).model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error updating recurring investment preference")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.delete("/recurring-investments/preferences")
+async def hide_recurring_investment_preference(
+    payload: RecurringInvestmentPreferenceUpdate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, payload.account_id)
+        preference = await recurring_pref_svc.update_preference(
+            user_id,
+            payload.account_id,
+            payload.symbol,
+            currency=payload.currency,
+            hidden=True,
+        )
+        return ApiResponse(success=True, data=preference).model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error hiding recurring investment preference")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.delete("/recurring-investments/preferences/accounts/{account_id}")
+async def clear_recurring_investment_preferences(
+    account_id: str,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, account_id)
+        result = await recurring_pref_svc.clear_account_preferences(user_id, account_id)
+        snaptrade_svc.clear_recurring_investments_cache(user_id)
+        return ApiResponse(success=True, data=result).model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error clearing recurring investment preferences")
         return JSONResponse(
             status_code=400,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
@@ -277,6 +417,7 @@ async def update_dividend_income_preference(
             payload.symbol,
             payload.payment_frequency,
             currency=payload.currency,
+            hidden=payload.hidden,
         )
         snaptrade_svc.clear_user_cache(user_id)
         return ApiResponse(success=True, data=preference).model_dump(by_alias=True)
@@ -293,6 +434,63 @@ async def update_dividend_income_preference(
         )
 
 
+@router.delete("/dividend-income/preferences")
+async def hide_dividend_income_preference(
+    payload: DividendFrequencyPreferenceUpdate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        if not payload.symbol.strip():
+            raise ValueError("symbol is required")
+        preference = await dividend_pref_svc.update_preference(
+            user_id,
+            payload.symbol,
+            payload.payment_frequency or "annual",
+            currency=payload.currency,
+            hidden=True,
+        )
+        snaptrade_svc.clear_user_cache(user_id)
+        return ApiResponse(success=True, data=preference).model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except Exception as ex:
+        logger.exception("Error hiding dividend income preference")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.delete("/dividend-income/preferences/symbols")
+async def clear_dividend_income_preferences(
+    payload: DividendPreferenceClearRequest,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        symbols = [
+            {"symbol": item.symbol, "currency": item.currency}
+            for item in payload.symbols
+        ]
+        result = await dividend_pref_svc.clear_preferences(user_id, symbols=symbols)
+        snaptrade_svc.clear_user_cache(user_id)
+        return ApiResponse(success=True, data=result).model_dump(by_alias=True)
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error clearing dividend income preferences")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
 @router.patch("/accounts/{account_id}/preference")
 async def update_account_preference(
     account_id: str,
@@ -302,10 +500,13 @@ async def update_account_preference(
 ):
     try:
         user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, account_id)
         preference = await account_pref_svc.update_preference(
             user_id,
             account_id,
             nickname=payload.nickname,
+            margin_balance=payload.margin_balance,
+            margin_interest_rate=payload.margin_interest_rate,
             hidden=payload.hidden,
         )
         snaptrade_svc.clear_user_cache(user_id)
@@ -326,6 +527,7 @@ async def hide_account(
 ):
     try:
         user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, account_id)
         preference = await account_pref_svc.hide_account(user_id, account_id)
         snaptrade_svc.clear_user_cache(user_id)
         return ApiResponse(success=True, data=preference).model_dump(by_alias=True)

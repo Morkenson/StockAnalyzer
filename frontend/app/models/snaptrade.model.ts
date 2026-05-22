@@ -6,6 +6,8 @@ export interface Account {
   type: 'RRSP' | 'LIRA' | 'RESP' | 'TFSA' | 'MARGIN' | 'CASH' | 'OTHER';
   brokerageId: string;
   balance?: number;
+  marginBalance?: number | null;
+  marginInterestRate?: number | null;
   currency: string;
   holdings?: Holding[];
 }
@@ -32,6 +34,15 @@ export interface Portfolio {
   currency: string;
 }
 
+export interface PortfolioBalanceSnapshot {
+  snapshotDate: string;
+  totalBalance: number;
+  totalGainLoss: number;
+  totalGainLossPercent: number;
+  accountCount: number;
+  currency: string;
+}
+
 export interface RecurringInvestment {
   symbol: string;
   accountId: string;
@@ -44,6 +55,15 @@ export interface RecurringInvestment {
   lastDate: string;
   nextEstimatedDate?: string | null;
   source: string;
+}
+
+export interface RecurringInvestmentPreference {
+  accountId: string;
+  symbol: string;
+  currency: string;
+  amount?: number | null;
+  frequency?: string | null;
+  hidden: boolean;
 }
 
 export interface DividendIncomeTotal {
@@ -64,6 +84,8 @@ export interface DividendIncomeAccount {
 
 export interface DividendIncomeSymbol {
   symbol: string;
+  accountId: string;
+  accountName: string;
   currency: string;
   currentQuantity: number;
   annualIncome: number;

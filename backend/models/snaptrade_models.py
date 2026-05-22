@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,6 +48,8 @@ class Account(BaseModel):
     type: str = ""
     brokerage_id: str = ""
     balance: float | None = None
+    margin_balance: float | None = None
+    margin_interest_rate: float | None = None
     currency: str = "USD"
     holdings: List[Holding] = Field(default_factory=list)
 
@@ -59,6 +61,16 @@ class Portfolio(BaseModel):
     total_balance: float = 0.0
     total_gain_loss: float = 0.0
     total_gain_loss_percent: float = 0.0
+    currency: str = "USD"
+
+
+class PortfolioBalanceSnapshot(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    snapshot_date: date
+    total_balance: float = 0.0
+    total_gain_loss: float = 0.0
+    total_gain_loss_percent: float = 0.0
+    account_count: int = 0
     currency: str = "USD"
 
 
@@ -98,6 +110,8 @@ class DividendIncomeAccount(BaseModel):
 class DividendIncomeSymbol(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     symbol: str = ""
+    account_id: str = ""
+    account_name: str = ""
     currency: str = "USD"
     current_quantity: float = 0.0
     annual_income: float = 0.0
@@ -124,6 +138,8 @@ class DividendIncomeSummary(BaseModel):
 class AccountPreferenceUpdate(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     nickname: str | None = None
+    margin_balance: float | None = None
+    margin_interest_rate: float | None = None
     hidden: bool | None = None
 
 
@@ -132,3 +148,25 @@ class DividendFrequencyPreferenceUpdate(BaseModel):
     symbol: str = ""
     currency: str = "USD"
     payment_frequency: str = ""
+    hidden: bool | None = None
+
+
+class DividendPreferenceClearItem(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    symbol: str = ""
+    currency: str = "USD"
+
+
+class DividendPreferenceClearRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    symbols: List[DividendPreferenceClearItem] = Field(default_factory=list)
+
+
+class RecurringInvestmentPreferenceUpdate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    account_id: str = ""
+    symbol: str = ""
+    currency: str = "USD"
+    amount: float | None = None
+    frequency: str | None = None
+    hidden: bool | None = None

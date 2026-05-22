@@ -1,7 +1,10 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { Account, Portfolio } from '../models/snaptrade.model';
 import { AppUser, AuthService } from '../services/auth.service';
+import { SnapTradeService } from '../services/snaptrade.service';
 
 @Component({
   selector: 'app-settings',
@@ -126,11 +129,78 @@ import { AppUser, AuthService } from '../services/auth.service';
           </ul>
         </aside>
       </div>
+
+      <section class="card settings-portfolio-card">
+        <div class="card-header">
+          <div>
+            <span>Portfolio</span>
+            <p>Connected account identifiers and display details</p>
+          </div>
+        </div>
+
+        <div class="loading-state compact" *ngIf="portfolioLoading">
+          <div class="spinner"></div>
+          <p>Loading portfolio accounts...</p>
+        </div>
+
+        <div class="error-message compact" *ngIf="portfolioError && !portfolioLoading">
+          <p>{{ portfolioError }}</p>
+        </div>
+
+        <div class="empty-state compact-empty" *ngIf="!portfolioLoading && !portfolioError && portfolioAccounts.length === 0">
+          <p>No connected portfolio accounts found.</p>
+        </div>
+
+        <div class="settings-account-list" *ngIf="!portfolioLoading && !portfolioError && portfolioAccounts.length > 0">
+          <article class="settings-account-panel" *ngFor="let account of portfolioAccounts">
+            <div class="settings-account-panel-header">
+              <div>
+                <h3>{{ account.nickname || account.name || 'Portfolio Account' }}</h3>
+                <p>{{ account.accountNumber || 'No account number' }} / {{ account.type || 'Unknown type' }}</p>
+              </div>
+              <button class="btn btn-secondary" type="button" (click)="viewAccount(account)">
+                View
+              </button>
+            </div>
+
+            <div class="account-detail-grid">
+              <div class="account-detail-field">
+                <span>Official Name</span>
+                <strong>{{ account.name || 'Unavailable' }}</strong>
+              </div>
+              <div class="account-detail-field" *ngIf="account.nickname">
+                <span>Nickname</span>
+                <strong>{{ account.nickname }}</strong>
+              </div>
+              <div class="account-detail-field">
+                <span>Account Number</span>
+                <strong>{{ account.accountNumber || 'Unavailable' }}</strong>
+              </div>
+              <div class="account-detail-field">
+                <span>Type</span>
+                <strong>{{ account.type || 'Unavailable' }}</strong>
+              </div>
+              <div class="account-detail-field">
+                <span>Brokerage ID</span>
+                <strong>{{ account.brokerageId || 'Unavailable' }}</strong>
+              </div>
+              <div class="account-detail-field">
+                <span>Currency</span>
+                <strong>{{ account.currency || 'USD' }}</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
     </div>
   `,
 })
 export class SettingsComponent implements OnInit, OnDestroy {
   currentUser: AppUser | null = null;
+  portfolio: Portfolio | null = null;
+  portfolioAccounts: Account[] = [];
+  portfolioLoading = false;
+  portfolioError = '';
   passwordForm!: FormGroup;
   isRequestingReset = false;
   isResettingPassword = false;
@@ -141,7 +211,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   constructor(
     private fb: FormBuilder,
-    private authService: AuthService
+    private authService: AuthService,
+    private snapTradeService: SnapTradeService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -155,6 +227,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       password: ['', [Validators.required, Validators.minLength(12)]],
       confirmPassword: ['', [Validators.required]]
     }, { validators: this.passwordMatchValidator });
+
+    this.loadPortfolioAccounts();
   }
 
   ngOnDestroy(): void {
@@ -219,6 +293,33 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.requestMessage = '';
     this.successMessage = 'Password reset successfully.';
     this.isResettingPassword = false;
+  }
+
+  loadPortfolioAccounts(): void {
+    this.portfolioLoading = true;
+    this.portfolioError = '';
+
+    this.snapTradeService.getPortfolio().subscribe({
+      next: (portfolio) => {
+        this.portfolio = portfolio;
+        this.portfolioAccounts = portfolio.accounts || [];
+        this.portfolioLoading = false;
+      },
+      error: (err) => {
+        this.portfolio = null;
+        this.portfolioAccounts = [];
+        this.portfolioLoading = false;
+        if (err.status === 404) {
+          return;
+        }
+        this.portfolioError = err.error?.message || err.message || 'Portfolio account details are unavailable right now.';
+        console.error('Error loading portfolio settings:', err);
+      }
+    });
+  }
+
+  viewAccount(account: Account): void {
+    this.router.navigate(['/portfolio/accounts', account.id]);
   }
 
   private passwordMatchValidator(form: FormGroup): { passwordMismatch: boolean } | null {

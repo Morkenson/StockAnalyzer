@@ -47,6 +47,15 @@ def clear_user_cache(user_id: str) -> None:
             _dividend_income_cache.pop(key, None)
 
 
+def clear_recurring_investments_cache(user_id: str | None = None) -> None:
+    if user_id is None:
+        _recurring_cache.clear()
+        return
+    for key in list(_recurring_cache):
+        if key[0] == user_id:
+            _recurring_cache.pop(key, None)
+
+
 def _cache_active(expires_at: float) -> bool:
     return expires_at > time.monotonic()
 
@@ -171,7 +180,14 @@ def _nested(mapping: dict, *keys: str) -> object:
 
 
 def _parse_account(element: dict) -> Account:
-    total = element.get("balance", {}).get("total", {}) if isinstance(element.get("balance"), dict) else {}
+    raw_balance = element.get("balance")
+    if isinstance(raw_balance, dict):
+        raw_total = raw_balance.get("total")
+        total = raw_total if isinstance(raw_total, dict) else {}
+        balance_value = total.get("amount")
+    else:
+        total = {}
+        balance_value = raw_balance
     meta = element.get("meta") if isinstance(element.get("meta"), dict) else {}
     return Account(
         id=element.get("id", ""),
@@ -179,7 +195,7 @@ def _parse_account(element: dict) -> Account:
         account_number=element.get("accountNumber") or element.get("number", ""),
         type=element.get("type") or element.get("raw_type") or meta.get("type", ""),
         brokerage_id=element.get("brokerageId") or element.get("brokerage_authorization", ""),
-        balance=element.get("balance") if not isinstance(element.get("balance"), dict) else total.get("amount"),
+        balance=balance_value,
         currency=element.get("currency") or total.get("currency", "USD"),
     )
 
@@ -339,6 +355,8 @@ def _current_holding_cache_key(accounts: list[Account]) -> tuple[str, ...]:
 
 
 def _frequency_from_interval(days: float) -> tuple[str, int] | None:
+    if 1 <= days <= 4:
+        return "daily", 1
     if 5 <= days <= 9:
         return "weekly", 7
     if 12 <= days <= 17:
@@ -348,7 +366,26 @@ def _frequency_from_interval(days: float) -> tuple[str, int] | None:
     return None
 
 
+def _interval_matches_frequency(days: int, frequency: str) -> bool:
+    if frequency == "daily":
+        return 1 <= days <= 4
+    if frequency == "weekly":
+        return 5 <= days <= 9
+    if frequency == "biweekly":
+        return 12 <= days <= 17
+    if frequency == "monthly":
+        return 25 <= days <= 35
+    return False
+
+
+def _minimum_recurring_occurrences(frequency: str) -> int:
+    if frequency == "daily":
+        return 5
+    return 3
+
+
 def _infer_recurring_from_buys(buys: list[dict[str, object]]) -> list[RecurringInvestment]:
+    baseline_minimum_occurrences = 3
     grouped: dict[tuple[str, str], list[dict[str, object]]] = {}
     for buy in buys:
         grouped.setdefault((str(buy["account_id"]), str(buy["symbol"])), []).append(buy)
@@ -356,7 +393,7 @@ def _infer_recurring_from_buys(buys: list[dict[str, object]]) -> list[RecurringI
     inferred: list[RecurringInvestment] = []
     for (_account_id, _symbol), items in grouped.items():
         ordered = sorted(items, key=lambda item: item["date"])
-        if len(ordered) < 2:
+        if len(ordered) < baseline_minimum_occurrences:
             continue
         intervals = [
             (ordered[i]["date"] - ordered[i - 1]["date"]).days
@@ -369,14 +406,20 @@ def _infer_recurring_from_buys(buys: list[dict[str, object]]) -> list[RecurringI
         if not cadence:
             continue
 
+        frequency, interval_days = cadence
+        minimum_occurrences = _minimum_recurring_occurrences(frequency)
+        if len(ordered) < minimum_occurrences:
+            continue
+        if sum(1 for interval in intervals if _interval_matches_frequency(interval, frequency)) < minimum_occurrences - 1:
+            continue
+
         amounts = [float(item["amount"]) for item in ordered]
         typical_amount = median(amounts)
         tolerance = max(2.0, typical_amount * 0.25)
         matching_amounts = [amount for amount in amounts if abs(amount - typical_amount) <= tolerance]
-        if len(matching_amounts) < 2:
+        if len(matching_amounts) < minimum_occurrences:
             continue
 
-        frequency, interval_days = cadence
         last_date = ordered[-1]["date"]
         confidence = min(0.95, 0.5 + (len(ordered) * 0.1) + (len(matching_amounts) / len(ordered) * 0.2))
         inferred.append(
@@ -450,7 +493,7 @@ def _summarize_dividend_income(
 
     totals_by_currency: dict[str, float] = {}
     accounts_by_key: dict[tuple[str, str], dict[str, object]] = {}
-    symbols_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    symbols_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
     last_payment: date | None = None
 
     for (_position_key, currency), items in position_groups.items():
@@ -467,6 +510,8 @@ def _summarize_dividend_income(
         symbol = str(first_item["symbol"])
         current_quantity = float(first_item["current_quantity"])
         override = frequency_overrides.get((symbol, currency))
+        if override and override.get("hidden"):
+            continue
         if override:
             frequency = str(override["payment_frequency"])
             payments_per_year = float(override["payments_per_year"])
@@ -498,11 +543,13 @@ def _summarize_dividend_income(
         if account_total["last_payment_date"] is None or payment_date > account_total["last_payment_date"]:
             account_total["last_payment_date"] = payment_date
 
-        symbol_key = (symbol, currency)
+        symbol_key = (account_id, symbol, currency)
         symbol_total = symbols_by_key.setdefault(
             symbol_key,
             {
                 "symbol": symbol,
+                "account_id": account_id,
+                "account_name": account_name,
                 "currency": currency,
                 "amount": 0.0,
                 "current_quantity": 0.0,
@@ -555,6 +602,8 @@ def _summarize_dividend_income(
         symbol_rows.append(
             DividendIncomeSymbol(
                 symbol=str(row["symbol"]),
+                account_id=str(row["account_id"]),
+                account_name=str(row["account_name"]),
                 currency=total.currency,
                 current_quantity=round(current_quantity, 6),
                 annual_income=total.annual_income,
@@ -575,7 +624,7 @@ def _summarize_dividend_income(
             key=lambda item: item.currency,
         ),
         accounts=sorted(account_rows, key=lambda item: (item.currency, -item.annual_income, item.account_name)),
-        symbols=sorted(symbol_rows, key=lambda item: (item.currency, -item.annual_income, item.symbol)),
+        symbols=sorted(symbol_rows, key=lambda item: (item.currency, -item.annual_income, item.account_name, item.symbol)),
         payment_count=len(dividends),
         last_payment_date=last_payment.isoformat() if last_payment else None,
     )
@@ -663,10 +712,14 @@ async def get_recurring_investments(
     force_refresh: bool = False,
 ) -> list[RecurringInvestment]:
     accounts = accounts if accounts is not None else await get_accounts(user_id, user_secret)
-    cache_key = (user_id, tuple(sorted(account.id for account in accounts)), lookback_days)
+    current_holdings = _current_holdings_by_account_symbol(accounts)
+    cache_key = (user_id, _current_holding_cache_key(accounts), lookback_days)
     cached = _recurring_cache.get(cache_key)
     if cached and not force_refresh and _cache_active(cached[0]):
         return [item.model_copy(deep=True) for item in cached[1]]
+    if not current_holdings:
+        _recurring_cache[cache_key] = (time.monotonic() + PORTFOLIO_CACHE_TTL_SECONDS, [])
+        return []
 
     end = date.today()
     start = end - timedelta(days=lookback_days)
@@ -688,6 +741,9 @@ async def get_recurring_investments(
                 continue
             parsed = _parse_buy_activity(activity, account)
             if parsed:
+                symbol = str(parsed["symbol"]).strip().upper()
+                if not current_holdings.get((account.id, symbol), 0.0):
+                    continue
                 buys.append(parsed)
     recurring = _infer_recurring_from_buys(buys)
     _recurring_cache[cache_key] = (

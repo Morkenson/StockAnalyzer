@@ -4,24 +4,24 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 5000
       JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret}
+      PLAID_TOKEN_ENCRYPTION_KEY: ${PLAID_TOKEN_ENCRYPTION_KEY:-change-this-dev-plaid-key}
+      SNAPTRADE_SECRET_ENCRYPTION_KEY: ${SNAPTRADE_SECRET_ENCRYPTION_KEY:-change-this-dev-snaptrade-key}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DATABASE_URL: ${DATABASE_URL:-postgresql://stockanalyzer:stockanalyzer@db:5432/stockanalyzer}
       SNAPTRADE_API_URL: ${SNAPTRADE_API_URL:-https://api.snaptrade.com/api/v1}
       SNAPTRADE_CLIENT_ID: ${SNAPTRADE_CLIENT_ID:-}
       SNAPTRADE_CONSUMER_KEY: ${SNAPTRADE_CONSUMER_KEY:-}
+      SNAPTRADE_CALLBACK_REDIRECT: ${SNAPTRADE_CALLBACK_REDIRECT:-http://localhost:4200/portfolio}
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
       PLAID_SECRET: ${PLAID_SECRET:-}
-      PLAID_ENV: ${PLAID_ENV:-sandbox}
-      PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions}
-      PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
-      PLAID_TOKEN_ENCRYPTION_KEY: ${PLAID_TOKEN_ENCRYPTION_KEY:-}
       TWELVE_DATA_API_URL: ${TWELVE_DATA_API_URL:-https://api.twelvedata.com}
       TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:4200}
       WATCHFILES_IGNORE_PERMISSION_DENIED: "true"
     ports:
       - "5000:5000"

@@ -6,7 +6,9 @@ import { environment } from '../../environments/environment';
 import {
   DividendIncomeSummary,
   Portfolio,
-  RecurringInvestment
+  PortfolioBalanceSnapshot,
+  RecurringInvestment,
+  RecurringInvestmentPreference
 } from '../models/snaptrade.model';
 
 interface ApiResponse<T> {
@@ -83,6 +85,83 @@ export class SnapTradeService {
       );
   }
 
+  updateRecurringInvestmentPreference(preference: {
+    accountId: string;
+    symbol: string;
+    currency?: string;
+    amount?: number | null;
+    frequency?: string | null;
+    hidden?: boolean | null;
+  }): Observable<RecurringInvestmentPreference> {
+    return this.http.patch<ApiResponse<RecurringInvestmentPreference>>(`${this.apiUrl}/recurring-investments/preferences`, preference)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to update recurring investment');
+        }),
+        catchError(error => {
+          console.error('Error updating recurring investment:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  hideRecurringInvestmentPreference(preference: {
+    accountId: string;
+    symbol: string;
+    currency?: string;
+  }): Observable<RecurringInvestmentPreference> {
+    return this.http.delete<ApiResponse<RecurringInvestmentPreference>>(`${this.apiUrl}/recurring-investments/preferences`, {
+      body: preference
+    })
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to remove recurring investment');
+        }),
+        catchError(error => {
+          console.error('Error removing recurring investment:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  clearRecurringInvestmentPreferences(accountId: string): Observable<{ accountId: string; removed: number }> {
+    return this.http.delete<ApiResponse<{ accountId: string; removed: number }>>(`${this.apiUrl}/recurring-investments/preferences/accounts/${encodeURIComponent(accountId)}`)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to clear recurring investment changes');
+        }),
+        catchError(error => {
+          console.error('Error clearing recurring investment changes:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  getPortfolioSnapshots(): Observable<PortfolioBalanceSnapshot[]> {
+    return this.http.get<ApiResponse<PortfolioBalanceSnapshot[]>>(`${this.apiUrl}/portfolio/snapshots`)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to load portfolio snapshots');
+        }),
+        catchError(error => {
+          console.error('Error fetching portfolio snapshots:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
   getDividendIncome(refresh = false): Observable<DividendIncomeSummary> {
     return this.http.get<ApiResponse<DividendIncomeSummary>>(`${this.apiUrl}/dividend-income`, {
       params: refresh ? { refresh: 'true' } : {}
@@ -101,8 +180,8 @@ export class SnapTradeService {
       );
   }
 
-  updateDividendIncomePreference(preference: { symbol: string; currency: string; paymentFrequency: string }): Observable<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number }> {
-    return this.http.patch<ApiResponse<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number }>>(`${this.apiUrl}/dividend-income/preferences`, preference)
+  updateDividendIncomePreference(preference: { symbol: string; currency: string; paymentFrequency: string; hidden?: boolean }): Observable<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number; hidden?: boolean }> {
+    return this.http.patch<ApiResponse<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number; hidden?: boolean }>>(`${this.apiUrl}/dividend-income/preferences`, preference)
       .pipe(
         map(response => {
           if (response.success && response.data) {
@@ -117,8 +196,44 @@ export class SnapTradeService {
       );
   }
 
-  updateAccountPreference(accountId: string, preference: { nickname?: string | null; hidden?: boolean }): Observable<{ accountId: string; nickname?: string | null; hidden: boolean }> {
-    return this.http.patch<ApiResponse<{ accountId: string; nickname?: string | null; hidden: boolean }>>(`${this.apiUrl}/accounts/${accountId}/preference`, preference)
+  hideDividendIncomePreference(preference: { symbol: string; currency: string; paymentFrequency?: string }): Observable<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number; hidden?: boolean }> {
+    return this.http.delete<ApiResponse<{ symbol: string; currency: string; paymentFrequency: string; paymentsPerYear: number; hidden?: boolean }>>(`${this.apiUrl}/dividend-income/preferences`, {
+      body: preference
+    })
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to remove dividend income preference');
+        }),
+        catchError(error => {
+          console.error('Error removing dividend income preference:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  clearDividendIncomePreferences(symbols: { symbol: string; currency: string }[]): Observable<{ removed: number }> {
+    return this.http.delete<ApiResponse<{ removed: number }>>(`${this.apiUrl}/dividend-income/preferences/symbols`, {
+      body: { symbols }
+    })
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to clear dividend income changes');
+        }),
+        catchError(error => {
+          console.error('Error clearing dividend income changes:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  updateAccountPreference(accountId: string, preference: { nickname?: string | null; marginBalance?: number | null; marginInterestRate?: number | null; hidden?: boolean }): Observable<{ accountId: string; nickname?: string | null; marginBalance?: number | null; marginInterestRate?: number | null; hidden: boolean }> {
+    return this.http.patch<ApiResponse<{ accountId: string; nickname?: string | null; marginBalance?: number | null; marginInterestRate?: number | null; hidden: boolean }>>(`${this.apiUrl}/accounts/${accountId}/preference`, preference)
       .pipe(
         map(response => {
           if (response.success && response.data) {

@@ -47,6 +47,9 @@ interface InstitutionAccountGroup {
           <p class="page-subtitle">Track money in, spending out, and Plaid-imported card and bank activity.</p>
         </div>
         <div class="hero-actions">
+          <button type="button" class="btn btn-secondary" (click)="openEntryModal()">
+            Add Entry
+          </button>
           <input
             class="month-input"
             type="month"
@@ -143,56 +146,6 @@ interface InstitutionAccountGroup {
       </section>
 
       <div class="cashflow-workspace">
-        <section class="card cashflow-form-card">
-          <div class="card-header">
-            <div>
-              <span>Add Manual Entry</span>
-              <p>Plaid imports save automatically after sync</p>
-            </div>
-          </div>
-
-          <form [formGroup]="entryForm" (ngSubmit)="addEntry()">
-            <div class="cashflow-type-toggle" role="group" aria-label="Entry type">
-              <button type="button" class="cashflow-type-button" [class.active]="entryForm.value.type === 'income'" (click)="setType('income')">
-                Income
-              </button>
-              <button type="button" class="cashflow-type-button" [class.active]="entryForm.value.type === 'expense'" (click)="setType('expense')">
-                Expense
-              </button>
-            </div>
-
-            <div class="form-group">
-              <label for="cashflowName">Name</label>
-              <input id="cashflowName" type="text" class="form-input" formControlName="name" placeholder="e.g., Paycheck, Rent, Utilities" />
-              <div class="form-error" *ngIf="entryForm.get('name')?.hasError('required') && entryForm.get('name')?.touched">Name is required</div>
-            </div>
-
-            <div class="grid grid-2">
-              <div class="form-group">
-                <label for="cashflowCategory">Category</label>
-                <input id="cashflowCategory" type="text" class="form-input" formControlName="category" placeholder="e.g., Housing" />
-                <div class="form-error" *ngIf="entryForm.get('category')?.hasError('required') && entryForm.get('category')?.touched">Category is required</div>
-              </div>
-
-              <div class="form-group">
-                <label for="cashflowAmount">Amount ($)</label>
-                <input id="cashflowAmount" type="number" class="form-input" formControlName="amount" min="0.01" step="0.01" placeholder="0.00" />
-                <div class="form-error" *ngIf="entryForm.get('amount')?.hasError('required') && entryForm.get('amount')?.touched">Amount is required</div>
-                <div class="form-error" *ngIf="entryForm.get('amount')?.hasError('min')">Amount must be greater than 0</div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="cashflowDate">Date</label>
-              <input id="cashflowDate" type="date" class="form-input" formControlName="date" />
-            </div>
-
-            <button type="submit" class="btn btn-primary" [disabled]="entryForm.invalid || isSaving">
-              {{ isSaving ? 'Saving...' : 'Add Entry' }}
-            </button>
-          </form>
-        </section>
-
         <section class="card category-card">
           <div class="card-header">
             <div>
@@ -217,6 +170,66 @@ interface InstitutionAccountGroup {
             </div>
           </ng-template>
         </section>
+      </div>
+
+      <div class="modal-overlay" *ngIf="isEntryModalOpen" (click)="closeEntryModal()" role="presentation">
+        <div class="modal-content cashflow-entry-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="cashflowEntryTitle">
+          <form [formGroup]="entryForm" (ngSubmit)="addEntry()">
+            <div class="modal-header">
+              <div>
+                <h2 id="cashflowEntryTitle">Add Manual Entry</h2>
+                <p>Plaid imports save automatically after sync</p>
+              </div>
+              <button type="button" class="modal-close" (click)="closeEntryModal()" aria-label="Close add entry modal">&times;</button>
+            </div>
+
+            <div class="modal-body">
+              <div class="cashflow-type-toggle" role="group" aria-label="Entry type">
+                <button type="button" class="cashflow-type-button" [class.active]="entryForm.value.type === 'income'" (click)="setType('income')">
+                  Income
+                </button>
+                <button type="button" class="cashflow-type-button" [class.active]="entryForm.value.type === 'expense'" (click)="setType('expense')">
+                  Expense
+                </button>
+              </div>
+
+              <div class="form-group">
+                <label for="cashflowName">Name</label>
+                <input id="cashflowName" type="text" class="form-input" formControlName="name" placeholder="e.g., Paycheck, Rent, Utilities" />
+                <div class="form-error" *ngIf="entryForm.get('name')?.hasError('required') && entryForm.get('name')?.touched">Name is required</div>
+              </div>
+
+              <div class="grid grid-2">
+                <div class="form-group">
+                  <label for="cashflowCategory">Category</label>
+                  <input id="cashflowCategory" type="text" class="form-input" formControlName="category" placeholder="e.g., Housing" />
+                  <div class="form-error" *ngIf="entryForm.get('category')?.hasError('required') && entryForm.get('category')?.touched">Category is required</div>
+                </div>
+
+                <div class="form-group">
+                  <label for="cashflowAmount">Amount ($)</label>
+                  <input id="cashflowAmount" type="number" class="form-input" formControlName="amount" min="0.01" step="0.01" placeholder="0.00" />
+                  <div class="form-error" *ngIf="entryForm.get('amount')?.hasError('required') && entryForm.get('amount')?.touched">Amount is required</div>
+                  <div class="form-error" *ngIf="entryForm.get('amount')?.hasError('min')">Amount must be greater than 0</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="cashflowDate">Date</label>
+                <input id="cashflowDate" type="date" class="form-input" formControlName="date" />
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" (click)="closeEntryModal()" [disabled]="isSaving">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary" [disabled]="entryForm.invalid || isSaving">
+                {{ isSaving ? 'Saving...' : 'Add Entry' }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
       <section class="card entries-card">
@@ -289,6 +302,7 @@ export class IncomeExpensesComponent implements OnInit, OnDestroy {
   deletingEntryId = '';
   removingConnectionId = '';
   hidingAccountId = '';
+  isEntryModalOpen = false;
   errorMessage = '';
   successMessage = '';
   private authSubscription?: Subscription;
@@ -486,6 +500,7 @@ export class IncomeExpensesComponent implements OnInit, OnDestroy {
       });
       this.clearDraft();
       await this.loadEntries();
+      this.isEntryModalOpen = false;
     } catch (error: any) {
       this.errorMessage = error?.error?.detail || error?.message || 'Unable to save entry.';
     } finally {
@@ -562,6 +577,17 @@ export class IncomeExpensesComponent implements OnInit, OnDestroy {
 
   setType(type: CashflowType): void {
     this.entryForm.patchValue({ type });
+  }
+
+  openEntryModal(): void {
+    this.isEntryModalOpen = true;
+  }
+
+  closeEntryModal(): void {
+    if (this.isSaving) {
+      return;
+    }
+    this.isEntryModalOpen = false;
   }
 
   clearDraft(): void {

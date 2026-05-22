@@ -12,6 +12,7 @@ import { DashboardComponent } from './components/dashboard.component';
 import { StockSearchComponent } from './components/stock-search.component';
 import { StockDetailsComponent } from './components/shared/stock-details.component';
 import { WatchlistComponent } from './components/watchlist.component';
+import { AccountDetailComponent } from './components/account-detail.component';
 import { PortfolioComponent } from './components/portfolio.component';
 import { HeaderComponent } from './components/shared/header.component';
 import { StockCardComponent } from './components/shared/stock-card.component';
@@ -32,6 +33,7 @@ import { AuthInterceptor } from './services/auth.interceptor';
     StockSearchComponent,
     StockDetailsComponent,
     WatchlistComponent,
+    AccountDetailComponent,
     PortfolioComponent,
     HeaderComponent,
     StockCardComponent,

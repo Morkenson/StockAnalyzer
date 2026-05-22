@@ -24,7 +24,14 @@ from sqlalchemy import delete as sql_delete
 import db_models
 from main import app
 from database import SessionLocal, init_db
-from services import account_preference_service, dividend_preference_service, snaptrade_service, user_service
+from routers import persistence
+from services import (
+    account_preference_service,
+    dividend_preference_service,
+    recurring_preference_service,
+    snaptrade_service,
+    user_service,
+)
 
 
 @pytest.fixture
@@ -50,6 +57,8 @@ def clear_user_secrets():
             db_models.SnapTradeUserSecret,
             db_models.SnapTradeAccountPreference,
             db_models.SnapTradeDividendPreference,
+            db_models.SnapTradeRecurringInvestmentPreference,
+            db_models.SnapTradePortfolioBalanceSnapshot,
             db_models.AppUser,
         ):
             db.execute(sql_delete(model))
@@ -57,13 +66,17 @@ def clear_user_secrets():
     user_service._user_secrets.clear()
     account_preference_service._preferences.clear()
     dividend_preference_service._preferences.clear()
+    recurring_preference_service._preferences.clear()
     snaptrade_service._portfolio_cache.clear()
     snaptrade_service._recurring_cache.clear()
     snaptrade_service._dividend_income_cache.clear()
+    persistence._rate_buckets.clear()
     yield
     user_service._user_secrets.clear()
     account_preference_service._preferences.clear()
     dividend_preference_service._preferences.clear()
+    recurring_preference_service._preferences.clear()
     snaptrade_service._portfolio_cache.clear()
     snaptrade_service._recurring_cache.clear()
     snaptrade_service._dividend_income_cache.clear()
+    persistence._rate_buckets.clear()

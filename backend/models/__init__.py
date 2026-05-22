@@ -10,6 +10,7 @@ from .snaptrade_models import (
     Account,
     Holding,
     Portfolio,
+    PortfolioBalanceSnapshot,
 )
 from .common import ApiResponse
 
@@ -23,5 +24,6 @@ __all__ = [
     "Account",
     "Holding",
     "Portfolio",
+    "PortfolioBalanceSnapshot",
     "ApiResponse",
 ]

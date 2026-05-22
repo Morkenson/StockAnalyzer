@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS app_users (
   id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
   email VARCHAR(320) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  token_version INTEGER NOT NULL DEFAULT 0,
+  otp_verified_until TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -101,6 +103,8 @@ CREATE TABLE IF NOT EXISTS snaptrade_account_preferences (
   user_id VARCHAR(128) NOT NULL,
   account_id VARCHAR(128) NOT NULL,
   nickname VARCHAR(255),
+  margin_balance DECIMAL(14,2),
+  margin_interest_rate DECIMAL(8,4),
   hidden BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -115,12 +119,28 @@ CREATE TABLE IF NOT EXISTS snaptrade_dividend_preferences (
   currency VARCHAR(8) NOT NULL DEFAULT 'USD',
   payment_frequency VARCHAR(32) NOT NULL,
   payments_per_year DECIMAL(8,2) NOT NULL,
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (user_id, symbol, currency)
 );
 
 CREATE INDEX IF NOT EXISTS idx_snaptrade_dividend_preferences_user_id ON snaptrade_dividend_preferences(user_id);
+
+CREATE TABLE IF NOT EXISTS snaptrade_recurring_investment_preferences (
+  user_id VARCHAR(128) NOT NULL,
+  account_id VARCHAR(128) NOT NULL,
+  symbol VARCHAR(32) NOT NULL,
+  currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+  amount DECIMAL(14,2),
+  frequency VARCHAR(32),
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (user_id, account_id, symbol, currency)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snaptrade_recurring_investment_preferences_user_id ON snaptrade_recurring_investment_preferences(user_id);
 
 CREATE TABLE IF NOT EXISTS plaid_items (
   id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,

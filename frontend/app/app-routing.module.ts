@@ -4,6 +4,7 @@ import { DashboardComponent } from './components/dashboard.component';
 import { StockSearchComponent } from './components/stock-search.component';
 import { StockDetailsComponent } from './components/shared/stock-details.component';
 import { WatchlistComponent } from './components/watchlist.component';
+import { AccountDetailComponent } from './components/account-detail.component';
 import { PortfolioComponent } from './components/portfolio.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
@@ -20,6 +21,7 @@ export const routes: Routes = [
   { path: 'search', component: StockSearchComponent, canActivate: [AuthGuard] },
   { path: 'stock/:symbol', component: StockDetailsComponent, canActivate: [AuthGuard] },
   { path: 'watchlist', component: WatchlistComponent, canActivate: [AuthGuard] },
+  { path: 'portfolio/accounts/:accountId', component: AccountDetailComponent, canActivate: [AuthGuard] },
   { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
   { path: 'income-expenses', component: IncomeExpensesComponent, canActivate: [AuthGuard] },
   { path: 'income', redirectTo: '/income-expenses', pathMatch: 'full' },

@@ -19,6 +19,10 @@ async def get_preferences(user_id: str) -> dict[str, dict[str, object]]:
             return {
                 row.account_id: {
                     "nickname": row.nickname,
+                    "margin_balance": float(row.margin_balance) if row.margin_balance is not None else None,
+                    "margin_interest_rate": (
+                        float(row.margin_interest_rate) if row.margin_interest_rate is not None else None
+                    ),
                     "hidden": row.hidden,
                 }
                 for row in rows
@@ -34,6 +38,8 @@ async def update_preference(
     user_id: str,
     account_id: str,
     nickname: str | None = None,
+    margin_balance: float | None = None,
+    margin_interest_rate: float | None = None,
     hidden: bool | None = None,
 ) -> dict[str, object]:
     normalized_nickname = nickname.strip() if isinstance(nickname, str) else nickname
@@ -48,20 +54,45 @@ async def update_preference(
                 db.add(row)
             if nickname is not None:
                 row.nickname = normalized_nickname
+            if margin_balance is not None:
+                row.margin_balance = max(0, margin_balance)
+            if margin_interest_rate is not None:
+                row.margin_interest_rate = max(0, margin_interest_rate)
             if hidden is not None:
                 row.hidden = hidden
             db.commit()
             db.refresh(row)
-            return {"accountId": row.account_id, "nickname": row.nickname, "hidden": row.hidden}
+            return {
+                "accountId": row.account_id,
+                "nickname": row.nickname,
+                "marginBalance": float(row.margin_balance) if row.margin_balance is not None else None,
+                "marginInterestRate": (
+                    float(row.margin_interest_rate) if row.margin_interest_rate is not None else None
+                ),
+                "hidden": row.hidden,
+            }
 
     key = (user_id, account_id)
-    current = _preferences.get(key, {"nickname": None, "hidden": False})
+    current = _preferences.get(
+        key,
+        {"nickname": None, "margin_balance": None, "margin_interest_rate": None, "hidden": False},
+    )
     if nickname is not None:
         current["nickname"] = normalized_nickname
+    if margin_balance is not None:
+        current["margin_balance"] = max(0, margin_balance)
+    if margin_interest_rate is not None:
+        current["margin_interest_rate"] = max(0, margin_interest_rate)
     if hidden is not None:
         current["hidden"] = hidden
     _preferences[key] = current
-    return {"accountId": account_id, **current}
+    return {
+        "accountId": account_id,
+        "nickname": current.get("nickname"),
+        "marginBalance": current.get("margin_balance"),
+        "marginInterestRate": current.get("margin_interest_rate"),
+        "hidden": current.get("hidden", False),
+    }
 
 
 async def hide_account(user_id: str, account_id: str) -> dict[str, object]:

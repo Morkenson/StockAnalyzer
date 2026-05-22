@@ -1,19 +1,49 @@
 import { Component, OnInit } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { SnapTradeService } from '../services/snaptrade.service';
-import { Portfolio, Account, RecurringInvestment, DividendIncomeSummary, DividendIncomeTotal } from '../models/snaptrade.model';
+import { Portfolio, Account, DividendIncomeAccount, DividendIncomeSummary, Holding, RecurringInvestment } from '../models/snaptrade.model';
 import { Router } from '@angular/router';
+import { StockHistoricalData } from '../models/stock.model';
+
+type ChartRange = {
+  daysBack: number;
+  label: string;
+};
+
+type FutureProjection = {
+  label: string;
+  years: number;
+  value: number;
+  annualIncome: number;
+  monthlyIncome: number;
+};
 
 @Component({
   selector: 'app-portfolio',
   template: `
     <div class="portfolio">
       <section class="page-hero portfolio-hero">
-        <div>
-          <p class="page-kicker">Portfolio</p>
-          <h1>{{ portfolio ? formatMoney(portfolio.totalBalance) : 'My Portfolio' }}</h1>
-          <p class="page-subtitle">{{ portfolio ? 'Your connected accounts in one place.' : 'Connect a brokerage account to see your investments.' }}</p>
+        <div class="portfolio-hero-main">
+          <div class="portfolio-hero-copy">
+            <p class="page-kicker">Portfolio</p>
+            <h1>{{ portfolio ? formatMoney(portfolio.totalBalance) : 'My Portfolio' }}</h1>
+            <p class="page-subtitle">{{ portfolio ? 'Your connected accounts in one place.' : 'Connect a brokerage account to see your investments.' }}</p>
+          </div>
+          <div class="portfolio-hero-summary" *ngIf="portfolio" aria-label="Portfolio all-time summary">
+            <div class="summary-item">
+              <label>All-time Gain/Loss</label>
+              <div class="value" [class.positive]="portfolio.totalGainLoss >= 0"
+                   [class.negative]="portfolio.totalGainLoss < 0">
+                {{ formatMoney(portfolio.totalGainLoss, true) }}
+                ({{ portfolio.totalGainLossPercent >= 0 ? '+' : '' }}{{ portfolio.totalGainLossPercent | number:'1.2-2' }}%)
+              </div>
+            </div>
+          </div>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary future-toggle-btn" type="button" (click)="toggleFuture()" [disabled]="!portfolio || futureLoading">
+            {{ futureLoading ? 'Loading...' : 'Future' }}
+          </button>
           <button class="btn btn-secondary" (click)="initiateAccountLinking()" [disabled]="linkingAccount">
             {{ linkingAccount ? 'Connecting...' : (portfolio ? 'Connect another account' : 'Connect account') }}
           </button>
@@ -23,145 +53,85 @@ import { Router } from '@angular/router';
         </div>
       </section>
 
-      <!-- Portfolio Overview -->
-      <section class="card" *ngIf="portfolio">
-        <div class="card-header">
+      <section class="card portfolio-future-card" *ngIf="portfolio && showFuture">
+        <div class="future-card-header">
           <div>
-            <span>Overview</span>
-            <p>Balance and performance summary</p>
+            <span class="chart-eyebrow">Future Pace</span>
+            <h2>Projected Portfolio</h2>
           </div>
+          <button class="account-icon-btn" type="button" title="Close future estimate" aria-label="Close future estimate" (click)="showFuture = false">
+            <span aria-hidden="true">&times;</span>
+          </button>
         </div>
-        <div class="portfolio-summary">
-          <div class="summary-item">
-            <label>Total Balance</label>
-            <div class="value">{{ formatMoney(portfolio.totalBalance) }}</div>
-          </div>
-          <div class="summary-item">
-            <label>Total Gain/Loss</label>
-            <div class="value" [class.positive]="portfolio.totalGainLoss >= 0" 
-                 [class.negative]="portfolio.totalGainLoss < 0">
-              {{ formatMoney(portfolio.totalGainLoss, true) }}
+
+        <div class="future-loading" *ngIf="futureLoading">
+          <div class="spinner"></div>
+          <p>Estimating your future pace...</p>
+        </div>
+
+        <div class="compact-empty" *ngIf="futureError && !futureLoading">
+          <p>{{ futureError }}</p>
+          <button class="btn btn-primary" type="button" (click)="loadFutureEstimate(true)">Try again</button>
+        </div>
+
+        <ng-container *ngIf="!futureLoading && !futureError">
+          <div class="future-summary-grid">
+            <div class="future-summary-item">
+              <label>Monthly Contributions</label>
+              <strong>{{ formatMoney(monthlyRecurringInvestment) }}</strong>
+            </div>
+            <div class="future-summary-item">
+              <label>Current Annual Income</label>
+              <strong>{{ formatMoney(currentAnnualDividendIncome) }}</strong>
+            </div>
+            <div class="future-summary-item">
+              <label>Income Yield</label>
+              <strong>{{ currentDividendYield | number:'1.2-2' }}%</strong>
             </div>
           </div>
-          <div class="summary-item">
-            <label>Gain/Loss %</label>
-            <div class="value" [class.positive]="portfolio.totalGainLossPercent >= 0" 
-                 [class.negative]="portfolio.totalGainLossPercent < 0">
-              {{ portfolio.totalGainLossPercent >= 0 ? '+' : '' }}{{ portfolio.totalGainLossPercent | number:'1.2-2' }}%
+
+          <div class="future-projection-grid" aria-label="Future portfolio estimates">
+            <div class="future-projection" *ngFor="let projection of futureProjections">
+              <span>{{ projection.label }}</span>
+              <strong>{{ formatMoney(projection.value) }}</strong>
+              <small>{{ formatMoney(projection.monthlyIncome) }}/mo income</small>
+              <small>{{ formatMoney(projection.annualIncome) }}/yr income</small>
             </div>
           </div>
-          <div class="summary-item">
-            <label>Accounts</label>
-            <div class="value">{{ (portfolio.accounts && portfolio.accounts.length) || 0 }}</div>
-          </div>
-        </div>
+        </ng-container>
       </section>
 
-      <section class="card dividend-income-card" *ngIf="portfolio && (dividendLoading || dividendIncome || dividendError)">
-        <div class="card-header">
-          <div>
-            <span>Estimated Dividend Income</span>
-            <p>Average historical payouts applied to current holdings</p>
-          </div>
-        </div>
-        <div class="loading-state compact" *ngIf="dividendLoading">
-          <div class="spinner"></div>
-          <p>Checking dividend activity...</p>
-        </div>
-        <div class="error-message compact" *ngIf="dividendError && !dividendLoading">
-          <p>{{ dividendError }}</p>
-        </div>
-        <div *ngIf="!dividendLoading && !dividendError && dividendIncome">
-          <div class="dividend-income-summary">
-            <div class="summary-item dividend-primary">
-              <label>Annual Income</label>
-              <div class="value">{{ formatDividendMoney(getPrimaryDividendTotal()?.annualIncome, getPrimaryDividendTotal()?.currency) }}</div>
-            </div>
-            <div class="summary-item">
-              <label>Monthly Estimate</label>
-              <div class="value">{{ formatDividendMoney(getPrimaryDividendTotal()?.monthlyIncome, getPrimaryDividendTotal()?.currency) }}</div>
-            </div>
-            <div class="summary-item">
-              <label>Dividend Holdings</label>
-              <div class="value">{{ getDividendHoldingCount() }}</div>
-            </div>
-            <div class="summary-item">
-              <label>Last Payment</label>
-              <div class="value compact-value">{{ formatDate(dividendIncome.lastPaymentDate) }}</div>
-            </div>
-          </div>
-
-          <div class="dividend-currency-list" *ngIf="dividendIncome.totals.length > 1">
-            <span *ngFor="let total of dividendIncome.totals">
-              {{ total.currency }} {{ formatDividendMoney(total.annualIncome, total.currency) }} annually
-            </span>
-          </div>
-
-          <div class="dividend-income-empty" *ngIf="!hasDividendIncome()">
-            <p>No dividend payments found in the last 12 months.</p>
-          </div>
-
-          <div class="dividend-symbol-list" *ngIf="hasDividendIncome()">
-            <div class="dividend-symbol-row" *ngFor="let item of dividendIncome.symbols">
-              <div>
-                <strong>{{ item.symbol }}</strong>
-                <p>{{ item.currentQuantity | number:'1.0-4' }} shares / {{ titleCase(item.paymentFrequency) }} / avg {{ formatDividendMoney(item.averagePaymentPerShare, item.currency) }} per share / last {{ formatDate(item.lastPaymentDate) }}</p>
-              </div>
-              <div class="dividend-frequency-control">
-                <span>Frequency</span>
-                <select
-                  [value]="item.paymentFrequency"
-                  [disabled]="savingDividendPreferenceKey === getDividendPreferenceKey(item.symbol, item.currency)"
-                  (change)="updateDividendFrequency(item.symbol, item.currency, $any($event.target).value)">
-                  <option *ngFor="let option of dividendFrequencyOptions" [value]="option.value">{{ option.label }}</option>
-                </select>
-              </div>
-              <div class="dividend-symbol-metric">
-                <span>Annual</span>
-                <strong>{{ formatDividendMoney(item.annualIncome, item.currency) }}</strong>
-              </div>
-              <div class="dividend-symbol-metric">
-                <span>Monthly</span>
-                <strong>{{ formatDividendMoney(item.monthlyIncome, item.currency) }}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card recurring-investments-card" *ngIf="portfolio && (recurringLoading || recurringInvestments.length > 0 || recurringError)">
-        <div class="card-header">
-          <div>
-            <span>Recurring Buys</span>
-            <p>Likely schedules from recent buy activity</p>
-          </div>
-        </div>
-        <div class="loading-state compact" *ngIf="recurringLoading">
-          <div class="spinner"></div>
-          <p>Checking recurring buys...</p>
-        </div>
-        <div class="error-message compact" *ngIf="recurringError && !recurringLoading">
-          <p>{{ recurringError }}</p>
-        </div>
-        <div class="recurring-investment-list" *ngIf="!recurringLoading && recurringInvestments.length > 0">
-          <div class="recurring-investment-item" *ngFor="let investment of recurringInvestments">
+      <section class="card account-balance-chart-card portfolio-chart-card" *ngIf="portfolio">
+        <div class="stock-chart-section portfolio-chart-section">
+          <div class="chart-topline">
             <div>
-              <strong>{{ investment.symbol }}</strong>
-              <p>{{ investment.accountName }}</p>
+              <span class="chart-eyebrow">Balance History</span>
+              <strong [class.positive]="chartChange >= 0" [class.negative]="chartChange < 0">
+                {{ chartChange >= 0 ? '+' : '' }}{{ chartChange | currency:'USD':'symbol':'1.2-2' }}
+                <span>({{ chartChangePercent >= 0 ? '+' : '' }}{{ chartChangePercent | number:'1.2-2' }}%)</span>
+              </strong>
             </div>
-            <div class="recurring-investment-metric">
-              <span>{{ titleCase(investment.frequency) }}</span>
-              <strong>{{ formatMoney(investment.amount) }}</strong>
-            </div>
-            <div class="recurring-investment-metric">
-              <span>Next est.</span>
-              <strong>{{ formatDate(investment.nextEstimatedDate) }}</strong>
-            </div>
-            <div class="recurring-investment-metric">
-              <span>Seen</span>
-              <strong>{{ investment.occurrences }}</strong>
-            </div>
+            <span class="chart-range-label">{{ selectedRange.label }}</span>
           </div>
+          <app-stock-chart
+            [historicalData]="balanceHistory"
+            valueLabel="Balance"
+            ariaLabel="Portfolio balance history chart">
+          </app-stock-chart>
+          <div class="chart-range-tabs" role="tablist" aria-label="Portfolio balance chart timeframe">
+            <button
+              *ngFor="let range of chartRanges"
+              type="button"
+              role="tab"
+              class="chart-range-tab"
+              [class.active]="range.label === selectedRange.label"
+              [attr.aria-selected]="range.label === selectedRange.label"
+              [disabled]="balanceHistoryLoading && range.label === selectedRange.label"
+              (click)="selectRange(range)">
+              {{ range.label }}
+            </button>
+          </div>
+          <div class="chart-loading" *ngIf="balanceHistoryLoading">Updating chart...</div>
         </div>
       </section>
 
@@ -199,8 +169,14 @@ import { Router } from '@angular/router';
           <h2>Accounts</h2>
           <p>{{ portfolio.accounts.length }} connected {{ portfolio.accounts.length === 1 ? 'account' : 'accounts' }}</p>
         </div>
-        <div class="card" *ngFor="let account of portfolio.accounts; let i = index">
-          <div class="account-header" (click)="toggleAccount(i)">
+        <div class="card" *ngFor="let account of portfolio.accounts">
+          <div
+            class="account-header"
+            role="button"
+            tabindex="0"
+            (click)="viewAccount(account)"
+            (keydown.enter)="viewAccount(account)"
+            (keydown.space)="viewAccount(account); $event.preventDefault()">
             <div class="account-action-rail" (click)="$event.stopPropagation()">
               <button
                 class="account-icon-btn"
@@ -221,18 +197,53 @@ import { Router } from '@angular/router';
                 <span aria-hidden="true">&times;</span>
               </button>
             </div>
+            <div
+              class="account-company-logo"
+              [ngClass]="getBrokerageLogoClass(account)"
+              [attr.aria-label]="getBrokerageBrand(account).name + ' logo'">
+              <span aria-hidden="true">{{ getBrokerageLogoText(account) }}</span>
+            </div>
             <div class="account-info">
               <h3>{{ account.nickname || account.name }}</h3>
               <p class="account-meta">
                 <span *ngIf="account.nickname">{{ account.name }} / </span>{{ account.accountNumber }} / {{ account.type }}
-                <span *ngIf="account.balance !== undefined">
-                  / {{ formatMoney(account.balance) }}
-                </span>
               </p>
+              <div class="account-card-stats" aria-label="Account core stats">
+                <div class="account-card-stat">
+                  <span>Total Value</span>
+                  <strong>{{ formatMoney(account.balance ?? getAccountTotalValue(account)) }}</strong>
+                </div>
+                <div class="account-card-stat">
+                  <span>Gain/Loss</span>
+                  <strong [class.positive]="getAccountTotalGainLoss(account) >= 0" [class.negative]="getAccountTotalGainLoss(account) < 0">
+                    {{ formatMoney(getAccountTotalGainLoss(account), true) }}
+                    ({{ getAccountTotalGainLossPercent(account) >= 0 ? '+' : '' }}{{ getAccountTotalGainLossPercent(account) | number:'1.2-2' }}%)
+                  </strong>
+                </div>
+                <div class="account-card-stat">
+                  <span>Allocation</span>
+                  <strong>{{ getPortfolioAllocation(account) | number:'1.2-2' }}%</strong>
+                </div>
+                <div class="account-card-stat">
+                  <span>Holdings</span>
+                  <strong>
+                    {{ account.holdings?.length || 0 }}
+                    <small *ngIf="getLargestHolding(account) as largest">({{ largest.symbol }})</small>
+                  </strong>
+                </div>
+                <div class="account-card-stat" *ngIf="getAccountDividendIncome(account) as dividend">
+                  <span>Monthly Div</span>
+                  <strong>{{ formatDividendMoney(dividend.monthlyIncome, dividend.currency) }}</strong>
+                </div>
+                <div class="account-card-stat" *ngIf="getAccountMonthlyRecurringBuys(account) > 0">
+                  <span>Monthly Recur</span>
+                  <strong>{{ formatMoney(getAccountMonthlyRecurringBuys(account)) }}</strong>
+                </div>
+              </div>
             </div>
             <div class="account-expand">
-              <span class="expand-icon" [class.expanded]="expandedAccounts[i]">
-                V
+              <span class="expand-icon">
+                &rsaquo;
               </span>
             </div>
           </div>
@@ -256,62 +267,6 @@ import { Router } from '@angular/router';
               </button>
             </div>
           </div>
-
-          <!-- Account Holdings -->
-          <div class="account-holdings" *ngIf="expandedAccounts[i]">
-            <div *ngIf="!account.holdings || account.holdings.length === 0" class="no-holdings">
-              <p>No holdings in this account.</p>
-            </div>
-
-            <div *ngIf="account.holdings && account.holdings.length > 0" class="table-wrapper">
-              <table class="table holdings-table">
-                <thead>
-                  <tr>
-                    <th>Symbol</th>
-                    <th>Quantity</th>
-                    <th>Avg Price</th>
-                    <th>Current Price</th>
-                    <th>Total Value</th>
-                    <th>Gain/Loss</th>
-                    <th>Gain/Loss %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let holding of account.holdings"
-                      (click)="viewStock(holding.symbol)"
-                      [attr.aria-label]="'View details for ' + holding.symbol">
-                    <td>
-                      <strong>{{ holding.symbol }}</strong>
-                    </td>
-                    <td>{{ holding.quantity | number:'1.0-2' }}</td>
-                    <td>{{ formatMoney(holding.averagePurchasePrice) }}</td>
-                    <td>{{ formatMoney(holding.currentPrice) }}</td>
-                    <td>{{ formatMoney(holding.totalValue) }}</td>
-                    <td [class.positive]="holding.gainLoss >= 0" [class.negative]="holding.gainLoss < 0">
-                      {{ formatMoney(holding.gainLoss, true) }}
-                    </td>
-                    <td [class.positive]="holding.gainLossPercent >= 0" [class.negative]="holding.gainLossPercent < 0">
-                      {{ holding.gainLossPercent >= 0 ? '+' : '' }}{{ holding.gainLossPercent | number:'1.2-2' }}%
-                    </td>
-                  </tr>
-                </tbody>
-                <tfoot *ngIf="account.holdings && account.holdings.length > 0">
-                  <tr class="account-total">
-                    <td colspan="4"><strong>Account Total</strong></td>
-                    <td><strong>{{ formatMoney(getAccountTotalValue(account)) }}</strong></td>
-                    <td [class.positive]="getAccountTotalGainLoss(account) >= 0" 
-                        [class.negative]="getAccountTotalGainLoss(account) < 0">
-                      <strong>{{ formatMoney(getAccountTotalGainLoss(account), true) }}</strong>
-                    </td>
-                    <td [class.positive]="getAccountTotalGainLossPercent(account) >= 0" 
-                        [class.negative]="getAccountTotalGainLossPercent(account) < 0">
-                      <strong>{{ getAccountTotalGainLossPercent(account) >= 0 ? '+' : '' }}{{ getAccountTotalGainLossPercent(account) | number:'1.2-2' }}%</strong>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
         </div>
       </section>
     </div>
@@ -321,27 +276,34 @@ export class PortfolioComponent implements OnInit {
   portfolio: Portfolio | null = null;
   loading = false;
   error: string | null = null;
-  recurringInvestments: RecurringInvestment[] = [];
-  recurringLoading = false;
-  recurringError: string | null = null;
-  dividendIncome: DividendIncomeSummary | null = null;
-  dividendLoading = false;
-  dividendError: string | null = null;
-  savingDividendPreferenceKey: string | null = null;
-  dividendFrequencyOptions = [
-    { value: 'monthly', label: 'Monthly' },
-    { value: 'quarterly', label: 'Quarterly' },
-    { value: 'semiannual', label: 'Semiannual' },
-    { value: 'annual', label: 'Annual' },
-    { value: 'biweekly', label: 'Biweekly' },
-    { value: 'weekly', label: 'Weekly' }
-  ];
   linkingAccount = false;
   editingNicknameAccountId: string | null = null;
   savingAccountId: string | null = null;
   removingAccountId: string | null = null;
   nicknameDrafts: { [accountId: string]: string } = {};
-  expandedAccounts: { [key: number]: boolean } = {};
+  balanceHistory: StockHistoricalData[] = [];
+  balanceHistoryLoading = false;
+  chartChange = 0;
+  chartChangePercent = 0;
+  showFuture = false;
+  futureLoading = false;
+  futureError: string | null = null;
+  recurringInvestments: RecurringInvestment[] = [];
+  dividendIncome: DividendIncomeSummary | null = null;
+  monthlyRecurringInvestment = 0;
+  currentAnnualDividendIncome = 0;
+  currentDividendYield = 0;
+  futureProjections: FutureProjection[] = [];
+  chartRanges: ChartRange[] = [
+    { label: '1W', daysBack: 7 },
+    { label: '1M', daysBack: 30 },
+    { label: '3M', daysBack: 90 },
+    { label: '1Y', daysBack: 365 },
+    { label: '5Y', daysBack: 365 * 5 },
+    { label: 'All', daysBack: Number.POSITIVE_INFINITY }
+  ];
+  selectedRange = this.chartRanges[1];
+  private allBalanceHistory: StockHistoricalData[] = [];
   private readonly moneyFormatter = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -349,6 +311,20 @@ export class PortfolioComponent implements OnInit {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+  private readonly brokerageBrands = [
+    { key: 'webull', name: 'Webull', logoText: 'W', tone: 'webull' },
+    { key: 'robinhood', name: 'Robinhood', logoText: 'RH', tone: 'robinhood' },
+    { key: 'fidelity', name: 'Fidelity', logoText: 'F', tone: 'fidelity' },
+    { key: 'schwab', name: 'Charles Schwab', logoText: 'CS', tone: 'schwab' },
+    { key: 'vanguard', name: 'Vanguard', logoText: 'V', tone: 'vanguard' },
+    { key: 'etrade', name: 'E*TRADE', logoText: 'E', tone: 'etrade' },
+    { key: 'e*trade', name: 'E*TRADE', logoText: 'E', tone: 'etrade' },
+    { key: 'td ameritrade', name: 'TD Ameritrade', logoText: 'TD', tone: 'td' },
+    { key: 'interactive brokers', name: 'Interactive Brokers', logoText: 'IB', tone: 'interactive-brokers' },
+    { key: 'coinbase', name: 'Coinbase', logoText: 'C', tone: 'coinbase' },
+    { key: 'alpaca', name: 'Alpaca', logoText: 'A', tone: 'alpaca' },
+    { key: 'wealthsimple', name: 'Wealthsimple', logoText: 'WS', tone: 'wealthsimple' }
+  ];
 
   // No need for userId/userSecret - backend handles authentication
 
@@ -374,20 +350,46 @@ export class PortfolioComponent implements OnInit {
     return formatter.format(value || 0);
   }
 
-  titleCase(value: string | null | undefined): string {
-    if (!value) {
-      return '';
+  getBrokerageBrand(account: Account): { key: string; name: string; logoText: string; tone: string } {
+    const searchable = `${account.nickname || ''} ${account.name || ''} ${account.brokerageId || ''}`.toLowerCase();
+    const brand = this.brokerageBrands.find(item => searchable.includes(item.key));
+
+    if (brand) {
+      return brand;
     }
-    return value.charAt(0).toUpperCase() + value.slice(1);
+
+    return {
+      key: this.getBrokerageFallbackKey(account),
+      name: account.name || 'Brokerage',
+      logoText: this.getBrokerageInitials(account.name || 'Brokerage'),
+      tone: 'default'
+    };
   }
 
-  formatDate(value: string | null | undefined): string {
-    if (!value) {
-      return 'TBD';
+  getBrokerageLogoText(account: Account): string {
+    return this.getBrokerageBrand(account).logoText;
+  }
+
+  getBrokerageLogoClass(account: Account): string {
+    return `account-company-logo-${this.getBrokerageBrand(account).tone}`;
+  }
+
+  private getBrokerageInitials(value: string): string {
+    const words = value.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+
+    if (words.length === 0) {
+      return 'MW';
     }
-    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
-      new Date(`${value}T00:00:00`)
-    );
+
+    if (words.length === 1) {
+      return words[0].slice(0, 2).toUpperCase();
+    }
+
+    return words.slice(0, 2).map(word => word[0]).join('').toUpperCase();
+  }
+
+  private getBrokerageFallbackKey(account: Account): string {
+    return (account.brokerageId || account.name || account.id || 'brokerage').toLowerCase();
   }
 
   ngOnInit(): void {
@@ -403,19 +405,17 @@ export class PortfolioComponent implements OnInit {
       next: (portfolio) => {
         this.portfolio = portfolio;
         this.loading = false;
-        this.loadRecurringInvestments(refresh);
-        this.loadDividendIncome(refresh);
-        // Auto-expand first account by default
-        if (portfolio.accounts && portfolio.accounts.length > 0) {
-          this.expandedAccounts[0] = true;
-        }
+        this.loadBalanceHistory();
+        this.loadAccountIncomeStats(refresh);
       },
       error: (err) => {
         if (err.status === 404) {
           this.portfolio = null;
           this.error = null;
-          this.recurringInvestments = [];
-          this.dividendIncome = null;
+          this.balanceHistory = [];
+          this.futureProjections = [];
+          this.showFuture = false;
+          this.updateChartChange();
           this.loading = false;
           return;
         }
@@ -426,52 +426,228 @@ export class PortfolioComponent implements OnInit {
     });
   }
 
-  loadRecurringInvestments(refresh = false): void {
-    this.recurringLoading = true;
-    this.recurringError = null;
-
-    this.snapTradeService.getRecurringInvestments(refresh).subscribe({
-      next: (investments) => {
-        this.recurringInvestments = investments;
-        this.recurringLoading = false;
-      },
-      error: (err) => {
-        this.recurringInvestments = [];
-        this.recurringError = err.error?.message || err.message || 'Failed to load recurring buys.';
-        this.recurringLoading = false;
-        console.error('Error loading recurring investments:', err);
-      }
-    });
-  }
-
-  loadDividendIncome(refresh = false): void {
-    this.dividendLoading = true;
-    this.dividendError = null;
-
-    this.snapTradeService.getDividendIncome(refresh).subscribe({
-      next: (income) => {
-        this.dividendIncome = income;
-        this.dividendLoading = false;
-      },
-      error: (err) => {
-        this.dividendIncome = null;
-        this.dividendError = err.error?.message || err.message || 'Failed to load dividend income.';
-        this.dividendLoading = false;
-        console.error('Error loading dividend income:', err);
-      }
-    });
-  }
-
   refreshPortfolio(): void {
     this.loadPortfolio(true);
   }
 
-  toggleAccount(index: number): void {
-    this.expandedAccounts[index] = !this.expandedAccounts[index];
+  toggleFuture(): void {
+    this.showFuture = !this.showFuture;
+
+    if (this.showFuture && this.futureProjections.length === 0 && !this.futureLoading) {
+      this.loadFutureEstimate();
+    }
   }
 
-  viewStock(symbol: string): void {
-    this.router.navigate(['/stock', symbol]);
+  loadFutureEstimate(refresh = false): void {
+    if (!this.portfolio) {
+      return;
+    }
+
+    this.futureLoading = true;
+    this.futureError = null;
+
+    this.loadIncomeStats(refresh, true);
+  }
+
+  private loadAccountIncomeStats(refresh = false): void {
+    if (!this.portfolio) {
+      return;
+    }
+
+    this.loadIncomeStats(refresh, false);
+  }
+
+  private loadIncomeStats(refresh = false, updateFutureLoading = false): void {
+    forkJoin({
+      recurring: this.snapTradeService.getRecurringInvestments(refresh),
+      dividends: this.snapTradeService.getDividendIncome(refresh)
+    }).subscribe({
+      next: ({ recurring, dividends }) => {
+        this.recurringInvestments = recurring || [];
+        this.dividendIncome = dividends || null;
+        this.updateFutureEstimate();
+        if (updateFutureLoading) {
+          this.futureLoading = false;
+        }
+      },
+      error: (err) => {
+        this.futureError = err.error?.message || err.message || 'Failed to load future estimate.';
+        if (updateFutureLoading) {
+          this.futureLoading = false;
+        }
+        console.error('Error loading future estimate:', err);
+      }
+    });
+  }
+
+  selectRange(range: ChartRange): void {
+    if (range.label === this.selectedRange.label) {
+      return;
+    }
+
+    this.selectedRange = range;
+    this.applySelectedRange();
+    this.updateChartChange();
+  }
+
+  loadBalanceHistory(): void {
+    if (!this.portfolio || !this.portfolio.accounts || this.portfolio.accounts.length === 0) {
+      this.balanceHistory = [];
+      this.updateChartChange();
+      return;
+    }
+
+    this.balanceHistoryLoading = true;
+    this.snapTradeService.getPortfolioSnapshots().subscribe({
+      next: (snapshots) => {
+        this.allBalanceHistory = snapshots
+          .map(snapshot => ({
+            date: new Date(`${snapshot.snapshotDate}T00:00:00`),
+            open: snapshot.totalBalance,
+            high: snapshot.totalBalance,
+            low: snapshot.totalBalance,
+            close: snapshot.totalBalance,
+            volume: 0
+          }))
+          .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+        this.applySelectedRange();
+        this.updateChartChange();
+        this.balanceHistoryLoading = false;
+      },
+      error: (err) => {
+        console.error('Failed to load portfolio snapshots:', err);
+        this.balanceHistory = [];
+        this.updateChartChange();
+        this.balanceHistoryLoading = false;
+      }
+    });
+  }
+
+  private applySelectedRange(): void {
+    if (!Number.isFinite(this.selectedRange.daysBack)) {
+      this.balanceHistory = [...this.allBalanceHistory];
+      return;
+    }
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.selectedRange.daysBack);
+    this.balanceHistory = this.allBalanceHistory.filter(point => new Date(point.date) >= cutoff);
+  }
+
+  private updateFutureEstimate(): void {
+    const currentValue = this.portfolio?.totalBalance || 0;
+    const annualRecurringInvestment = this.recurringInvestments.reduce(
+      (sum, investment) => sum + this.getRecurringYearlyAmount(investment),
+      0
+    );
+    this.monthlyRecurringInvestment = annualRecurringInvestment / 12;
+    this.currentAnnualDividendIncome = this.getAnnualDividendIncome();
+    this.currentDividendYield = currentValue > 0 ? (this.currentAnnualDividendIncome / currentValue) * 100 : 0;
+
+    const dividendYieldRate = this.currentDividendYield / 100;
+    this.futureProjections = [
+      { label: '1 Year', years: 1 },
+      { label: '5 Years', years: 5 },
+      { label: '10 Years', years: 10 },
+      { label: '20 Years', years: 20 }
+    ].map(({ label, years }) => {
+      const value = currentValue + (annualRecurringInvestment * years);
+      const annualIncome = dividendYieldRate > 0 ? value * dividendYieldRate : this.currentAnnualDividendIncome;
+
+      return {
+        label,
+        years,
+        value,
+        annualIncome,
+        monthlyIncome: annualIncome / 12
+      };
+    });
+  }
+
+  private getAnnualDividendIncome(): number {
+    if (!this.dividendIncome || !this.dividendIncome.totals) {
+      return 0;
+    }
+
+    return this.dividendIncome.totals.reduce((sum, total) => sum + (total.annualIncome || 0), 0);
+  }
+
+  private getRecurringYearlyAmount(investment: RecurringInvestment): number {
+    const amount = investment.amount || 0;
+
+    switch ((investment.frequency || '').toLowerCase()) {
+      case 'daily':
+        return amount * 252;
+      case 'weekly':
+        return amount * 52;
+      case 'biweekly':
+        return amount * 26;
+      case 'quarterly':
+        return amount * 4;
+      case 'semiannual':
+        return amount * 2;
+      case 'annual':
+      case 'yearly':
+        return amount;
+      case 'monthly':
+      default:
+        return amount * 12;
+    }
+  }
+
+  viewAccount(account: Account): void {
+    this.router.navigate(['/portfolio/accounts', account.id]);
+  }
+
+  getAccountTotalValue(account: Account): number {
+    if (!account.holdings || account.holdings.length === 0) {
+      return account.balance || 0;
+    }
+    return account.holdings.reduce((sum, holding) => sum + holding.totalValue, 0);
+  }
+
+  getAccountTotalGainLoss(account: Account): number {
+    if (!account.holdings || account.holdings.length === 0) {
+      return 0;
+    }
+    return account.holdings.reduce((sum, holding) => sum + holding.gainLoss, 0);
+  }
+
+  getAccountTotalGainLossPercent(account: Account): number {
+    const totalValue = this.getAccountTotalValue(account);
+    const totalGainLoss = this.getAccountTotalGainLoss(account);
+    if (totalValue === 0 || totalValue === totalGainLoss) {
+      return 0;
+    }
+    return (totalGainLoss / (totalValue - totalGainLoss)) * 100;
+  }
+
+  getPortfolioAllocation(account: Account): number {
+    if (!this.portfolio || !this.portfolio.totalBalance) {
+      return 0;
+    }
+    return (this.getAccountTotalValue(account) / this.portfolio.totalBalance) * 100;
+  }
+
+  getLargestHolding(account: Account): Holding | null {
+    if (!account.holdings || account.holdings.length === 0) {
+      return null;
+    }
+    return [...account.holdings].sort((a, b) => b.totalValue - a.totalValue)[0];
+  }
+
+  getAccountDividendIncome(account: Account): DividendIncomeAccount | null {
+    if (!this.dividendIncome || !this.dividendIncome.accounts) {
+      return null;
+    }
+    return this.dividendIncome.accounts.find(item => item.accountId === account.id) || null;
+  }
+
+  getAccountMonthlyRecurringBuys(account: Account): number {
+    const annualRecurring = this.recurringInvestments
+      .filter(investment => investment.accountId === account.id)
+      .reduce((sum, investment) => sum + this.getRecurringYearlyAmount(investment), 0);
+    return annualRecurring / 12;
   }
 
   startNicknameEdit(account: Account, event: Event): void {
@@ -526,70 +702,6 @@ export class PortfolioComponent implements OnInit {
     });
   }
 
-  getAccountTotalValue(account: Account): number {
-    if (!account.holdings || account.holdings.length === 0) {
-      return 0;
-    }
-    return account.holdings.reduce((sum, holding) => sum + holding.totalValue, 0);
-  }
-
-  getAccountTotalGainLoss(account: Account): number {
-    if (!account.holdings || account.holdings.length === 0) {
-      return 0;
-    }
-    return account.holdings.reduce((sum, holding) => sum + holding.gainLoss, 0);
-  }
-
-  getAccountTotalGainLossPercent(account: Account): number {
-    const totalValue = this.getAccountTotalValue(account);
-    const totalGainLoss = this.getAccountTotalGainLoss(account);
-    if (totalValue === 0) {
-      return 0;
-    }
-    return (totalGainLoss / (totalValue - totalGainLoss)) * 100;
-  }
-
-  getPrimaryDividendTotal(): DividendIncomeTotal | null {
-    if (!this.dividendIncome || !this.dividendIncome.totals || this.dividendIncome.totals.length === 0) {
-      return null;
-    }
-    return this.dividendIncome.totals.find(total => total.currency === 'USD') || this.dividendIncome.totals[0];
-  }
-
-  hasDividendIncome(): boolean {
-    return !!this.dividendIncome && !!this.dividendIncome.symbols && this.dividendIncome.symbols.length > 0;
-  }
-
-  getDividendHoldingCount(): number {
-    if (!this.dividendIncome || !this.dividendIncome.symbols) {
-      return 0;
-    }
-    const knownSymbols = this.dividendIncome.symbols.filter(item => item.symbol !== 'UNKNOWN');
-    return knownSymbols.length || this.dividendIncome.symbols.length;
-  }
-
-  getDividendPreferenceKey(symbol: string, currency: string): string {
-    return `${symbol}:${currency}`;
-  }
-
-  updateDividendFrequency(symbol: string, currency: string, paymentFrequency: string): void {
-    const preferenceKey = this.getDividendPreferenceKey(symbol, currency);
-    this.savingDividendPreferenceKey = preferenceKey;
-    this.dividendError = null;
-
-    this.snapTradeService.updateDividendIncomePreference({ symbol, currency, paymentFrequency }).subscribe({
-      next: () => {
-        this.savingDividendPreferenceKey = null;
-        this.loadDividendIncome(true);
-      },
-      error: (err) => {
-        this.savingDividendPreferenceKey = null;
-        this.dividendError = err.error?.message || err.message || 'Failed to update dividend frequency.';
-        console.error('Error updating dividend frequency:', err);
-      }
-    });
-  }
-
   /**
    * Initiate SnapTrade account linking process
    * This will redirect the user to their brokerage's OAuth page
@@ -616,6 +728,23 @@ export class PortfolioComponent implements OnInit {
         console.error('Error initiating connection:', err);
       }
     });
+  }
+
+  private updateChartChange(): void {
+    if (!this.balanceHistory || this.balanceHistory.length < 2) {
+      this.chartChange = 0;
+      this.chartChangePercent = 0;
+      return;
+    }
+
+    const sorted = [...this.balanceHistory].sort((a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const firstClose = sorted[0].close;
+    const lastClose = sorted[sorted.length - 1].close;
+
+    this.chartChange = lastClose - firstClose;
+    this.chartChangePercent = firstClose ? (this.chartChange / firstClose) * 100 : 0;
   }
 }
 

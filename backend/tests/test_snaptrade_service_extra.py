@@ -254,6 +254,141 @@ def test_infer_recurring_from_weekly_buy_activities():
     assert recurring[0].next_estimated_date == "2026-01-26"
 
 
+def test_infer_recurring_from_daily_buy_activities():
+    account = svc.Account(id="a1", name="Robinhood Individual", account_number="", type="", brokerage_id="")
+    buys = [
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "VOO"},
+                "type": "BUY",
+                "amount": -10.0,
+                "trade_date": "2026-01-05T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "VOO"},
+                "type": "BUY",
+                "amount": -10.25,
+                "trade_date": "2026-01-06T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "VOO"},
+                "type": "BUY",
+                "amount": -9.75,
+                "trade_date": "2026-01-07T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "VOO"},
+                "type": "BUY",
+                "amount": -10.0,
+                "trade_date": "2026-01-08T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "VOO"},
+                "type": "BUY",
+                "amount": -10.1,
+                "trade_date": "2026-01-09T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+    ]
+
+    recurring = svc._infer_recurring_from_buys([buy for buy in buys if buy])
+
+    assert len(recurring) == 1
+    assert recurring[0].symbol == "VOO"
+    assert recurring[0].frequency == "daily"
+    assert recurring[0].amount == 10.0
+    assert recurring[0].occurrences == 5
+    assert recurring[0].next_estimated_date == "2026-01-10"
+
+
+def test_infer_recurring_rejects_short_daily_buy_streak():
+    account = svc.Account(id="a1", name="Robinhood Individual", account_number="", type="", brokerage_id="")
+    buys = [
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "META"},
+                "type": "BUY",
+                "amount": -50.0,
+                "trade_date": "2026-01-05T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "META"},
+                "type": "BUY",
+                "amount": -50.0,
+                "trade_date": "2026-01-06T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "META"},
+                "type": "BUY",
+                "amount": -50.0,
+                "trade_date": "2026-01-07T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+    ]
+
+    recurring = svc._infer_recurring_from_buys([buy for buy in buys if buy])
+
+    assert recurring == []
+
+
+def test_infer_recurring_requires_at_least_three_buy_activities():
+    account = svc.Account(id="a1", name="Crypto", account_number="", type="", brokerage_id="")
+    buys = [
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "SOL"},
+                "type": "BUY",
+                "amount": -19.83,
+                "trade_date": "2026-01-05T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+        svc._parse_buy_activity(
+            {
+                "symbol": {"symbol": "SOL"},
+                "type": "BUY",
+                "amount": -19.84,
+                "trade_date": "2026-01-06T10:00:00Z",
+                "currency": {"code": "USD"},
+            },
+            account,
+        ),
+    ]
+
+    recurring = svc._infer_recurring_from_buys([buy for buy in buys if buy])
+
+    assert recurring == []
+
+
 def test_parse_holding_handles_current_snaptrade_position_shape():
     holding = svc._parse_holding(
         {
@@ -370,13 +505,23 @@ async def test_get_portfolio_force_refresh_bypasses_cache(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_recurring_investments_uses_cache(monkeypatch):
     calls = {"activities": 0}
-    accounts = [svc.Account(id="a1", name="One", account_number="", type="", brokerage_id="")]
+    accounts = [
+        svc.Account(
+            id="a1",
+            name="One",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="META", quantity=1)],
+        )
+    ]
 
     async def fake_activities(user_id, user_secret, account_id, start_date=None, end_date=None):
         calls["activities"] += 1
         return [
             {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-05T00:00:00Z"},
             {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-12T00:00:00Z"},
+            {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-19T00:00:00Z"},
         ]
 
     monkeypatch.setattr(svc, "get_account_activities", fake_activities)
@@ -387,6 +532,33 @@ async def test_get_recurring_investments_uses_cache(monkeypatch):
     assert first[0].symbol == "META"
     assert second[0].symbol == "META"
     assert calls["activities"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_recurring_investments_requires_current_holding(monkeypatch):
+    accounts = [
+        svc.Account(
+            id="a1",
+            name="One",
+            account_number="",
+            type="",
+            brokerage_id="",
+            holdings=[svc.Holding(symbol="AAPL", quantity=1)],
+        )
+    ]
+
+    async def fake_activities(user_id, user_secret, account_id, start_date=None, end_date=None):
+        return [
+            {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-05T00:00:00Z"},
+            {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-12T00:00:00Z"},
+            {"symbol": {"symbol": "META"}, "type": "BUY", "amount": -25, "trade_date": "2026-01-19T00:00:00Z"},
+        ]
+
+    monkeypatch.setattr(svc, "get_account_activities", fake_activities)
+
+    recurring = await svc.get_recurring_investments("u", "s", accounts=accounts)
+
+    assert recurring == []
 
 
 @pytest.mark.asyncio
@@ -459,6 +631,8 @@ async def test_get_dividend_income_sums_by_currency_account_and_symbol(monkeypat
     assert summary.payment_count == 3
     assert summary.last_payment_date == today.isoformat()
     assert summary.accounts[1].account_name == "Trading"
+    assert summary.symbols[1].account_id == "a1"
+    assert summary.symbols[1].account_name == "Trading"
     assert summary.symbols[1].symbol == "SCHD"
     assert summary.symbols[1].current_quantity == 4
     assert summary.symbols[1].average_payment_per_share == 4.9375

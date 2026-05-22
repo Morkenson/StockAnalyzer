@@ -54,6 +54,17 @@ describe('AuthService', () => {
     expect(JSON.parse(localStorage.getItem('stock_analyzer_user') || '{}')).toEqual(user);
   });
 
+  it('returns pending user id when signup requires OTP', async () => {
+    const service = createService(of({ success: true }));
+    await service.waitForInitialization();
+    http.post.mockReturnValueOnce(of({ success: true, data: { pendingUserId: 'pending-user-1' } }));
+
+    const result = await service.signUp(user.email, 'password');
+
+    expect(result).toEqual({ user: null, pendingUserId: 'pending-user-1', error: null });
+    expect(service.getCurrentUser()).toBeNull();
+  });
+
   it('uses the cached user while initialization is in flight', () => {
     localStorage.setItem('stock_analyzer_user', JSON.stringify(user));
     const service = createService(of({ success: true }));
@@ -92,6 +103,17 @@ describe('AuthService', () => {
 
     expect(result.user).toEqual(user);
     expect(service.getCurrentUser()).toEqual(user);
+  });
+
+  it('returns pending user id when signin requires OTP', async () => {
+    const service = createService(of({ success: true }));
+    await service.waitForInitialization();
+    http.post.mockReturnValueOnce(of({ success: true, data: { pendingUserId: 'pending-user-1' } }));
+
+    const result = await service.signIn(user.email, 'password');
+
+    expect(result).toEqual({ user: null, pendingUserId: 'pending-user-1', error: null });
+    expect(service.getCurrentUser()).toBeNull();
   });
 
   it('returns normalized signin errors', async () => {

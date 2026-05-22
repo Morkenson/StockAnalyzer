@@ -101,7 +101,12 @@ _log_optional_env_vars()
 
 from database import SessionLocal, init_db
 from routers import cashflow, persistence, plaid, stock, snaptrade
+from services import account_preference_service as account_pref_svc
+from services import portfolio_snapshot_service as portfolio_snapshot_svc
+from services import snaptrade_service as snaptrade_svc
+from services import user_service as user_svc
 DB_KEEPALIVE_INTERVAL_SECONDS = 86400
+PORTFOLIO_SNAPSHOT_INTERVAL_SECONDS = 86400
 DEFAULT_FRONTEND_ORIGINS = [
     "http://localhost:4200",
     "https://localhost:4200",
@@ -132,18 +137,80 @@ async def database_keepalive_loop() -> None:
         await asyncio.sleep(DB_KEEPALIVE_INTERVAL_SECONDS)
 
 
+async def portfolio_snapshot_loop() -> None:
+    while True:
+        try:
+            await snapshot_all_portfolios()
+        except Exception as exc:
+            logger.warning("portfolio snapshot pass failed: %s", exc)
+        await asyncio.sleep(PORTFOLIO_SNAPSHOT_INTERVAL_SECONDS)
+
+
+async def snapshot_all_portfolios() -> None:
+    user_secrets = await user_svc.list_user_secrets()
+    if not user_secrets:
+        logger.info("portfolio snapshot pass skipped; no SnapTrade users found")
+        return
+
+    saved = 0
+    for user_id, user_secret in user_secrets.items():
+        try:
+            portfolio = await snaptrade_svc.get_portfolio(user_id, user_secret, force_refresh=True)
+            portfolio = await _visible_snapshot_portfolio(user_id, portfolio)
+            with SessionLocal() as db:
+                portfolio_snapshot_svc.save_daily_snapshot(db, user_id, portfolio)
+            saved += 1
+        except Exception as exc:
+            logger.warning("portfolio snapshot failed for user %s: %s", user_id, exc)
+    logger.info("portfolio snapshot pass saved %s/%s snapshots", saved, len(user_secrets))
+
+
+async def _visible_snapshot_portfolio(user_id: str, portfolio):
+    preferences = await account_pref_svc.get_preferences(user_id)
+    visible_accounts = []
+    for account in portfolio.accounts:
+        preference = preferences.get(account.id, {})
+        if preference.get("hidden"):
+            continue
+        nickname = preference.get("nickname")
+        if isinstance(nickname, str) and nickname.strip():
+            account.nickname = nickname.strip()
+        visible_accounts.append(account)
+
+    portfolio.accounts = visible_accounts
+    portfolio.total_balance = sum(account.balance or 0 for account in visible_accounts)
+    portfolio.total_gain_loss = sum(sum(holding.gain_loss for holding in account.holdings) for account in visible_accounts)
+    portfolio.total_gain_loss_percent = (
+        (portfolio.total_gain_loss / (portfolio.total_balance - portfolio.total_gain_loss) * 100)
+        if (portfolio.total_balance - portfolio.total_gain_loss)
+        else 0
+    )
+    portfolio.currency = visible_accounts[0].currency if visible_accounts else portfolio.currency
+    return portfolio
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     keepalive_task = asyncio.create_task(database_keepalive_loop())
+    snapshot_task = None
+    if (os.getenv("APP_ENV") or "").lower() != "test":
+        snapshot_task = asyncio.create_task(portfolio_snapshot_loop())
     try:
         yield
     finally:
         keepalive_task.cancel()
+        if snapshot_task:
+            snapshot_task.cancel()
         try:
             await keepalive_task
         except asyncio.CancelledError:
             pass
+        if snapshot_task:
+            try:
+                await snapshot_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -49,6 +49,7 @@ COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").lower()
 RESET_TOKEN_MINUTES = 30
 OTP_EXPIRE_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
+OTP_TRUST_HOURS = 4
 
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 
@@ -57,6 +58,14 @@ _DUMMY_PASSWORD_HASH = hashlib.pbkdf2_hmac("sha256", b"dummy-password-for-timing
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _rate_limit(request: Request, key: str, limit: int = 10, window_seconds: int = 60) -> None:
@@ -120,6 +129,15 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         samesite=COOKIE_SAMESITE,
         path="/",
     )
+
+
+def _otp_trust_expires_at() -> datetime:
+    return _now() + timedelta(hours=OTP_TRUST_HOURS)
+
+
+def _has_recent_otp(user: AppUser) -> bool:
+    verified_until = _as_utc(user.otp_verified_until)
+    return verified_until is not None and verified_until > _now()
 
 
 def _clear_auth_cookie(response: Response) -> None:
@@ -211,7 +229,7 @@ def _ensure_watchlist(db: Session, user_id: str, watchlist_id: str) -> Watchlist
 
 
 @router.post("/auth/signup", status_code=status.HTTP_201_CREATED)
-async def signup(payload: AuthCredentials, request: Request, db: Session = Depends(get_db)):
+async def signup(payload: AuthCredentials, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     _rate_limit(request, "signup", limit=5, window_seconds=300)
     if len(payload.password) < 12:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 12 characters")
@@ -226,12 +244,18 @@ async def signup(payload: AuthCredentials, request: Request, db: Session = Depen
     code = f"{secrets.randbelow(1_000_000):06d}"
     db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
     db.commit()
-    await email_service.send_otp_email(user.email, code)
+    background_tasks.add_task(email_service.send_otp_email, user.email, code)
     return ApiResponse(success=True, data={"pendingUserId": user.id}).model_dump(by_alias=True)
 
 
 @router.post("/auth/signin")
-async def signin(payload: AuthCredentials, request: Request, db: Session = Depends(get_db)):
+async def signin(
+    payload: AuthCredentials,
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     _rate_limit(request, "signin", limit=8, window_seconds=300)
     user = db.scalar(select(AppUser).where(AppUser.email == payload.email.strip().lower()))
     if user:
@@ -242,10 +266,14 @@ async def signin(payload: AuthCredentials, request: Request, db: Session = Depen
     if not user or not password_ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
+    if _has_recent_otp(user):
+        db.commit()
+        _set_auth_cookie(response, _create_access_token(user))
+        return ApiResponse(success=True, data={"user": _user_row(user)}).model_dump(by_alias=True)
     code = f"{secrets.randbelow(1_000_000):06d}"
     db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
     db.commit()
-    await email_service.send_otp_email(user.email, code)
+    background_tasks.add_task(email_service.send_otp_email, user.email, code)
     return ApiResponse(success=True, data={"pendingUserId": user.id}).model_dump(by_alias=True)
 
 
@@ -264,6 +292,7 @@ async def verify_otp(payload: OtpVerify, request: Request, response: Response, d
         detail = "Invalid code" if remaining > 0 else "Too many incorrect attempts. Please sign in again."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
     user = db.get(AppUser, otp.user_id)
+    user.otp_verified_until = _otp_trust_expires_at()
     db.delete(otp)
     db.commit()
     _set_auth_cookie(response, _create_access_token(user))
@@ -271,7 +300,7 @@ async def verify_otp(payload: OtpVerify, request: Request, response: Response, d
 
 
 @router.post("/auth/resend-otp")
-async def resend_otp(payload: OtpResend, request: Request, db: Session = Depends(get_db)):
+async def resend_otp(payload: OtpResend, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     _rate_limit(request, "resend-otp", limit=3, window_seconds=300)
     user = db.get(AppUser, payload.pending_user_id)
     if user:
@@ -279,7 +308,7 @@ async def resend_otp(payload: OtpResend, request: Request, db: Session = Depends
         code = f"{secrets.randbelow(1_000_000):06d}"
         db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
         db.commit()
-        await email_service.send_otp_email(user.email, code)
+        background_tasks.add_task(email_service.send_otp_email, user.email, code)
     return ApiResponse(success=True, message="If a pending sign-in exists, a new code has been sent.").model_dump(by_alias=True)
 
 
@@ -344,6 +373,7 @@ async def reset_password(payload: PasswordResetConfirm, request: Request, db: Se
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
     user.password_hash = _hash_password(payload.password)
     user.token_version = (user.token_version or 0) + 1
+    user.otp_verified_until = None
     row.used_at = _now()
     db.commit()
     return ApiResponse(success=True, message="Password reset successfully").model_dump(by_alias=True)

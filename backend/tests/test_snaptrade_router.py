@@ -102,6 +102,21 @@ class TestGetPortfolio:
         assert resp.status_code == 425
         assert resp.json()["message"] == "Account data is still syncing"
 
+    def test_success_saves_daily_snapshot(self):
+        with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value="secret")):
+            with patch(
+                "routers.snaptrade.snaptrade_svc.get_portfolio",
+                new=AsyncMock(return_value=MOCK_PORTFOLIO_WITH_ACCOUNTS.model_copy(deep=True)),
+            ):
+                with patch("routers.snaptrade.account_pref_svc.get_preferences", new=AsyncMock(return_value={})):
+                    resp = client.get("/api/snaptrade/portfolio", headers=HEADERS)
+
+        assert resp.status_code == 200
+        snapshots = client.get("/api/snaptrade/portfolio/snapshots", headers=HEADERS)
+        assert snapshots.status_code == 200
+        assert snapshots.json()["data"][0]["totalBalance"] == 300
+        assert snapshots.json()["data"][0]["accountCount"] == 2
+
 
 class TestInitiateConnection:
     def test_creates_user_and_stores_returned_secret(self):
@@ -171,8 +186,8 @@ class TestRecurringInvestments:
         ]
         with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value="secret")):
             with patch(
-                "routers.snaptrade.snaptrade_svc.get_accounts",
-                new=AsyncMock(return_value=MOCK_PORTFOLIO_WITH_ACCOUNTS.accounts),
+                "routers.snaptrade.snaptrade_svc.get_portfolio",
+                new=AsyncMock(return_value=MOCK_PORTFOLIO_WITH_ACCOUNTS),
             ):
                 with patch(
                     "routers.snaptrade.account_pref_svc.get_preferences",
@@ -182,10 +197,24 @@ class TestRecurringInvestments:
                         "routers.snaptrade.snaptrade_svc.get_recurring_investments",
                         new=AsyncMock(return_value=recurring),
                     ) as get_recurring:
-                        resp = client.get("/api/snaptrade/recurring-investments", headers=HEADERS)
+                        with patch(
+                            "routers.snaptrade.recurring_pref_svc.get_preferences",
+                            new=AsyncMock(
+                                return_value={
+                                    ("acc1", "META", "USD"): {
+                                        "amount": 30,
+                                        "frequency": "daily",
+                                        "hidden": False,
+                                    }
+                                }
+                            ),
+                        ):
+                            resp = client.get("/api/snaptrade/recurring-investments", headers=HEADERS)
 
         assert resp.status_code == 200
         assert resp.json()["data"][0]["symbol"] == "META"
+        assert resp.json()["data"][0]["amount"] == 30
+        assert resp.json()["data"][0]["frequency"] == "daily"
         get_recurring.assert_awaited_once()
         accounts = get_recurring.await_args.kwargs["accounts"]
         assert [account.id for account in accounts] == ["acc1"]
@@ -194,7 +223,7 @@ class TestRecurringInvestments:
 
     def test_refresh_bypasses_cache(self):
         with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value="secret")):
-            with patch("routers.snaptrade.snaptrade_svc.get_accounts", new=AsyncMock(return_value=MOCK_ACCOUNTS)):
+            with patch("routers.snaptrade.snaptrade_svc.get_portfolio", new=AsyncMock(return_value=MOCK_PORTFOLIO_WITH_ACCOUNTS)):
                 with patch("routers.snaptrade.account_pref_svc.get_preferences", new=AsyncMock(return_value={})):
                     with patch(
                         "routers.snaptrade.snaptrade_svc.get_recurring_investments",
@@ -204,6 +233,76 @@ class TestRecurringInvestments:
 
         assert resp.status_code == 200
         assert get_recurring.await_args.kwargs["force_refresh"] is True
+
+    def test_update_recurring_preference(self):
+        with patch(
+            "routers.snaptrade.recurring_pref_svc.update_preference",
+            new=AsyncMock(
+                return_value={
+                    "accountId": "acc1",
+                    "symbol": "BNDI",
+                    "currency": "USD",
+                    "amount": 22,
+                    "frequency": "daily",
+                    "hidden": False,
+                }
+            ),
+        ) as update_pref:
+            resp = client.patch(
+                "/api/snaptrade/recurring-investments/preferences",
+                headers=HEADERS,
+                json={"accountId": "acc1", "symbol": "BNDI", "currency": "USD", "amount": 22, "frequency": "daily"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["amount"] == 22
+        update_pref.assert_awaited_once_with(
+            "user1",
+            "acc1",
+            "BNDI",
+            currency="USD",
+            amount=22.0,
+            frequency="daily",
+            hidden=None,
+        )
+
+    def test_hide_recurring_preference(self):
+        with patch(
+            "routers.snaptrade.recurring_pref_svc.update_preference",
+            new=AsyncMock(
+                return_value={
+                    "accountId": "acc1",
+                    "symbol": "BNDI",
+                    "currency": "USD",
+                    "amount": None,
+                    "frequency": None,
+                    "hidden": True,
+                }
+            ),
+        ) as update_pref:
+            resp = client.request(
+                "DELETE",
+                "/api/snaptrade/recurring-investments/preferences",
+                headers=HEADERS,
+                json={"accountId": "acc1", "symbol": "BNDI", "currency": "USD"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["hidden"] is True
+        update_pref.assert_awaited_once_with("user1", "acc1", "BNDI", currency="USD", hidden=True)
+
+    def test_clear_account_recurring_preferences(self):
+        with patch(
+            "routers.snaptrade.recurring_pref_svc.clear_account_preferences",
+            new=AsyncMock(return_value={"accountId": "acc1", "removed": 2}),
+        ) as clear_prefs:
+            with patch("routers.snaptrade.snaptrade_svc.clear_recurring_investments_cache") as clear_cache:
+                resp = client.delete("/api/snaptrade/recurring-investments/preferences/accounts/acc1", headers=HEADERS)
+
+        assert resp.status_code == 200
+        assert resp.json()["data"] == {"accountId": "acc1", "removed": 2}
+        clear_prefs.assert_awaited_once_with("user1", "acc1")
+        clear_cache.assert_called_once_with("user1")
 
 
 class TestDividendIncome:
@@ -285,7 +384,7 @@ class TestDividendIncome:
 
         assert resp.status_code == 200
         assert resp.json()["data"]["paymentFrequency"] == "monthly"
-        update_preference.assert_awaited_once_with("user1", "schd", "monthly", currency="usd")
+        update_preference.assert_awaited_once_with("user1", "schd", "monthly", currency="usd", hidden=None)
         clear_cache.assert_called_once_with("user1")
 
     def test_update_frequency_preference_rejects_invalid_frequency(self):
@@ -301,22 +400,65 @@ class TestDividendIncome:
 
         assert resp.status_code == 400
 
+    def test_hide_dividend_preference(self):
+        with patch(
+            "routers.snaptrade.dividend_pref_svc.update_preference",
+            new=AsyncMock(
+                return_value={
+                    "symbol": "SCHD",
+                    "currency": "USD",
+                    "paymentFrequency": "monthly",
+                    "paymentsPerYear": 12,
+                    "hidden": True,
+                }
+            ),
+        ) as update_preference:
+            with patch("routers.snaptrade.snaptrade_svc.clear_user_cache") as clear_cache:
+                resp = client.request(
+                    "DELETE",
+                    "/api/snaptrade/dividend-income/preferences",
+                    json={"symbol": "SCHD", "currency": "USD", "paymentFrequency": "monthly"},
+                    headers=HEADERS,
+                )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["hidden"] is True
+        update_preference.assert_awaited_once_with("user1", "SCHD", "monthly", currency="USD", hidden=True)
+        clear_cache.assert_called_once_with("user1")
+
 
 class TestAccountPreferences:
     def test_update_preference(self):
         with patch(
             "routers.snaptrade.account_pref_svc.update_preference",
-            new=AsyncMock(return_value={"accountId": "acc1", "nickname": "Trading", "hidden": False}),
+            new=AsyncMock(
+                return_value={
+                    "accountId": "acc1",
+                    "nickname": "Trading",
+                    "marginBalance": 1250,
+                    "marginInterestRate": 12.5,
+                    "hidden": False,
+                }
+            ),
         ) as update_pref:
             resp = client.patch(
                 "/api/snaptrade/accounts/acc1/preference",
-                json={"nickname": "Trading", "hidden": False},
+                json={"nickname": "Trading", "marginBalance": 1250, "marginInterestRate": 12.5, "hidden": False},
                 headers=HEADERS,
             )
 
         assert resp.status_code == 200
         assert resp.json()["data"]["nickname"] == "Trading"
-        update_pref.assert_awaited_once_with("user1", "acc1", nickname="Trading", hidden=False)
+        assert resp.json()["data"]["marginBalance"] == 1250
+        assert resp.json()["data"]["marginInterestRate"] == 12.5
+        update_pref.assert_awaited_once_with(
+            "user1",
+            "acc1",
+            nickname="Trading",
+            margin_balance=1250.0,
+            margin_interest_rate=12.5,
+            hidden=False,
+        )
 
     def test_delete_hides_account(self):
         with patch(

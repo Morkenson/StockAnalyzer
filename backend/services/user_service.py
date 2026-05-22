@@ -53,6 +53,24 @@ async def get_user_secret(user_id: str) -> Optional[str]:
     return _user_secrets.get(user_id)
 
 
+async def list_user_secrets() -> dict[str, str]:
+    if _use_database:
+        with SessionLocal() as db:
+            rows = db.scalars(select(SnapTradeUserSecret)).all()
+            secrets: dict[str, str] = {}
+            for row in rows:
+                decrypted = _decrypt(row.user_secret)
+                if decrypted is not None:
+                    secrets[row.user_id] = decrypted
+                    continue
+                legacy_plaintext = row.user_secret
+                row.user_secret = _encrypt(legacy_plaintext)
+                secrets[row.user_id] = legacy_plaintext
+            db.commit()
+            return secrets
+    return dict(_user_secrets)
+
+
 async def store_user_secret(user_id: str, user_secret: str) -> None:
     encrypted = _encrypt(user_secret)
     if _use_database:
