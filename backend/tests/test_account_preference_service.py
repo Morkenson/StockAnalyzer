@@ -17,7 +17,7 @@ async def test_update_and_get_preference():
 
     preferences = await svc.get_preferences("user1")
 
-    assert preferences["acc1"] == {"nickname": "Trading", "hidden": False}
+    assert preferences["acc1"] == {"nickname": "Trading", "hidden": False, "margin_balance": None, "margin_interest_rate": None}
 
 
 @pytest.mark.asyncio

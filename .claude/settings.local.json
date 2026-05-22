@@ -7,7 +7,10 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\backend\" -Recurse -Include \"*mail*\",\"*email*\",\"*verify*\",\"*otp*\",\"*token*\" -ErrorAction SilentlyContinue)",
       "Bash(Select-Object FullName)",
       "Bash(python -m pytest tests/ -v)",
-      "Bash(python -m pytest tests/ -q)"
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest backend/tests/ -x -q)",
+      "Bash(python -m pytest backend/tests/ -q)",
+      "Bash(python -m pytest backend/tests/test_snaptrade_router.py -q)"
     ]
   }
 }
