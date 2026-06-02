@@ -16,7 +16,25 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\" -Recurse -Filter \"*.component.ts\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\\\\app\" -Recurse -Filter \"*.tsx\" -o Name)",
       "Bash(Select-Object -First 20)",
-      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:4200\" -TimeoutSec 3 -UseBasicParsing; \"UP: $\\($r.StatusCode\\)\" } catch { \"DOWN\" })"
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:4200\" -TimeoutSec 3 -UseBasicParsing; \"UP: $\\($r.StatusCode\\)\" } catch { \"DOWN\" })",
+      "Bash(python -m pytest tests/test_auth_router.py -x -q --tb=short)",
+      "Bash(python -c ' *)",
+      "PowerShell(Remove-Item -Recurse -Force \"c:\\\\Github Projects\\\\StockAnalyzer\\\\e2e\" -Confirm:$false)",
+      "Bash(pg_isready)",
+      "Bash(python -c \"import psycopg; print\\('psycopg3 available'\\)\")",
+      "Bash(psql -U postgres -c \"DROP DATABASE IF EXISTS stockanalyzer_test; CREATE DATABASE stockanalyzer_test;\")",
+      "Bash(createdb -U postgres stockanalyzer_test)",
+      "Bash(psql -U postgres -c \"SELECT 1\")",
+      "Bash(Get-ChildItem -Recurse -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\\\\src\\\\app\\\\\" -Name)",
+      "PowerShell(& psql -U postgres -c \"SELECT version\\(\\)\" 2>&1)",
+      "PowerShell(psql --version)",
+      "PowerShell(psql -U postgres -c \"SELECT 1 as test\")",
+      "Bash(cd \"/c/Github Projects/StockAnalyzer\" && find . -name \"app.routes.ts\" -o -name \"app-routing.module.ts\" 2>/dev/null | head -20)",
+      "Read(//c/c/Github Projects/**)",
+      "Bash(psql -U postgres -c \"SELECT 1 as test\")",
+      "Bash(docker --version)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\" -Recurse -Filter \"*.component.ts\")",
+      "Bash(python -m pytest tests/ -x -q --tb=short)"
     ]
   }
 }

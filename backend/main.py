@@ -7,7 +7,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import traceback
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -219,6 +221,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    tb = traceback.format_exc()
+    print(f"UNHANDLED EXCEPTION {request.method} {request.url.path}\n{tb}", flush=True)
+    logger.error("Unhandled exception %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
 
 def _cors_middleware(app):
     return CORSMiddleware(

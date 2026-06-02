@@ -80,7 +80,7 @@ jobs:
           # Cache both lockfiles so either change invalidates the cache
           cache-dependency-path: |
             frontend/package-lock.json
-            e2e/package-lock.json
+            frontend/e2e/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci
@@ -88,13 +88,13 @@ jobs:
 
       - name: Install e2e dependencies
         run: npm ci
-        working-directory: e2e
+        working-directory: frontend/e2e
 
       - name: Get Playwright version (for cache key)
         id: pw-version
         run: |
           echo "version=$(node -e "console.log(require('./package-lock.json').packages['node_modules/@playwright/test'].version)")" >> $GITHUB_OUTPUT
-        working-directory: e2e
+        working-directory: frontend/e2e
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -106,16 +106,16 @@ jobs:
       - name: Install Playwright browser + OS dependencies
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-        working-directory: e2e
+        working-directory: frontend/e2e
 
       - name: Install Playwright OS dependencies (browser cached)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-        working-directory: e2e
+        working-directory: frontend/e2e
 
       - name: Run E2E tests
         run: npx playwright test
-        working-directory: e2e
+        working-directory: frontend/e2e
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

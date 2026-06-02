@@ -37,16 +37,16 @@ coverage-summary:
 	@node scripts/coverage-summary.js
 
 e2e-install:
-	cd e2e && npm install && npx playwright install
+	cd frontend/e2e && npm install && npx playwright install
 
 e2e:
-	cd e2e && npx playwright test
+	cd frontend/e2e && npx playwright test
 
 e2e-headed:
-	cd e2e && npx playwright test --headed
+	cd frontend/e2e && npx playwright test --headed
 
 e2e-report:
-	cd e2e && npx playwright show-report ../coverage/e2e
+	cd frontend/e2e && npx playwright show-report ../../coverage/e2e
 
 clean-coverage:
 	-@powershell -NoProfile -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue coverage, backend/.coverage, backend/htmlcov, frontend/coverage"

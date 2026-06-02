@@ -9,7 +9,7 @@ export default defineConfig({
   retries: IS_CI ? 2 : 0,
   workers: IS_CI ? 1 : undefined,
   reporter: [
-    ['html', { outputFolder: '../coverage/e2e', open: 'never' }],
+    ['html', { outputFolder: '../../coverage/e2e', open: 'never' }],
     ['list'],
   ],
   use: {
@@ -29,7 +29,7 @@ export default defineConfig({
       ],
   webServer: {
     command: 'npm start',
-    cwd: '../frontend',
+    cwd: '..',
     url: 'http://localhost:4200',
     reuseExistingServer: !IS_CI,
     timeout: 120_000,
