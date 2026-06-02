@@ -112,7 +112,7 @@ test.describe('Signup page', () => {
     await page.locator('#confirmPassword').fill('validpassword123');
     await page.getByRole('button', { name: 'Create Account' }).click();
 
-    await expect(page.getByText('Check your email')).toBeVisible();
+    await expect(page.getByText('Verify your email')).toBeVisible();
   });
 
   test('links to login page', async ({ unauthenticatedPage: page }) => {
