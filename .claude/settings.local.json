@@ -10,7 +10,13 @@
       "Bash(python -m pytest tests/ -q)",
       "Bash(python -m pytest backend/tests/ -x -q)",
       "Bash(python -m pytest backend/tests/ -q)",
-      "Bash(python -m pytest backend/tests/test_snaptrade_router.py -q)"
+      "Bash(python -m pytest backend/tests/test_snaptrade_router.py -q)",
+      "Bash(Get-ChildItem -Path 'c:\\\\Github Projects\\\\StockAnalyzer' -Force)",
+      "Bash(Select-Object -Property Name, PSIsContainer)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\" -Recurse -Filter \"*.component.ts\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\\\\app\" -Recurse -Filter \"*.tsx\" -o Name)",
+      "Bash(Select-Object -First 20)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:4200\" -TimeoutSec 3 -UseBasicParsing; \"UP: $\\($r.StatusCode\\)\" } catch { \"DOWN\" })"
     ]
   }
 }

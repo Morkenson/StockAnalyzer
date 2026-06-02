@@ -11,6 +11,7 @@ import { SignupComponent } from './components/signup.component';
 import { NetWorthComponent } from './components/net-worth.component';
 import { IncomeExpensesComponent } from './components/income-expenses.component';
 import { SettingsComponent } from './components/settings.component';
+import { DebtCalculatorComponent } from './components/debt-calculator.component';
 import { AuthGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -27,7 +28,8 @@ export const routes: Routes = [
   { path: 'income', redirectTo: '/income-expenses', pathMatch: 'full' },
   { path: 'expenses', redirectTo: '/income-expenses', pathMatch: 'full' },
   { path: 'income-enpensises', redirectTo: '/income-expenses', pathMatch: 'full' },
-  { path: 'debt-calculator', redirectTo: '/networth', pathMatch: 'full' },
+  { path: 'networth/debt', component: DebtCalculatorComponent, canActivate: [AuthGuard] },
+  { path: 'debt-calculator', redirectTo: '/networth/debt', pathMatch: 'full' },
   { path: 'networth', component: NetWorthComponent, canActivate: [AuthGuard] },
   { path: 'assets', redirectTo: '/networth', pathMatch: 'full' },
   { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard] },

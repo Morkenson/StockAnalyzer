@@ -424,6 +424,7 @@ export class DebtCalculatorComponent implements OnInit, OnDestroy {
 
   calculatePayment(): void {
     if (this.calculatorForm.invalid) {
+      this.calculatorForm.markAllAsTouched();
       return;
     }
 
@@ -623,11 +624,11 @@ export class DebtCalculatorComponent implements OnInit, OnDestroy {
   }
 
   resetForm(): void {
-    this.calculatorForm.patchValue({
+    this.calculatorForm.reset({
       loanName: '',
-      principal: '',
-      interestRate: '',
-      loanTerm: '',
+      principal: null,
+      interestRate: null,
+      loanTerm: null,
       notes: ''
     });
     this.monthlyPayment = 0;

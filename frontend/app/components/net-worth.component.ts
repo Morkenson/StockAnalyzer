@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { Asset } from '../models/asset.model';
 import { AssetService } from '../services/asset.service';
@@ -19,7 +20,7 @@ import { SnapTradeService } from '../services/snaptrade.service';
           <p class="dashboard-subtitle">Add connected portfolios and manual assets, then subtract saved loan principal.</p>
         </div>
         <div class="hero-actions">
-          <button type="button" class="btn btn-secondary" (click)="toggleDebtCalculator()">
+          <button type="button" class="btn btn-secondary" (click)="goToDebt()">
             Debt
           </button>
           <button type="button" class="btn btn-primary" (click)="openAssetForm()">
@@ -63,10 +64,6 @@ import { SnapTradeService } from '../services/snaptrade.service';
         </div>
         <p class="card-description" *ngIf="portfolioLoading">Loading connected portfolios...</p>
         <p class="card-description" *ngIf="portfolioError">{{ portfolioError }}</p>
-      </section>
-
-      <section *ngIf="showDebtCalculator" class="net-worth-debt-section">
-        <app-debt-calculator></app-debt-calculator>
       </section>
 
       <div class="grid grid-3" *ngIf="assets.length > 0">
@@ -214,7 +211,6 @@ export class NetWorthComponent implements OnInit, OnDestroy {
   isSaving = false;
   deletingAssetId = '';
   errorMessage = '';
-  showDebtCalculator = false;
   connectedPortfolioValue = 0;
   portfolioLoading = false;
   portfolioError = '';
@@ -224,7 +220,8 @@ export class NetWorthComponent implements OnInit, OnDestroy {
     private fb: FormBuilder,
     private assetService: AssetService,
     private loanService: LoanService,
-    private snapTradeService: SnapTradeService
+    private snapTradeService: SnapTradeService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -298,13 +295,13 @@ export class NetWorthComponent implements OnInit, OnDestroy {
     );
   }
 
+  goToDebt(): void {
+    this.router.navigate(['/networth/debt']);
+  }
+
   openAssetForm(): void {
     this.showAssetForm = true;
     this.errorMessage = '';
-  }
-
-  toggleDebtCalculator(): void {
-    this.showDebtCalculator = !this.showDebtCalculator;
   }
 
   closeAssetForm(): void {

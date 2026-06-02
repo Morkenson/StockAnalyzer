@@ -28,10 +28,12 @@ def downgrade() -> None:
 def _create_baseline_tables(dialect: str) -> None:
     datetime_type = sa.DateTime(timezone=dialect == "postgresql")
     now_default = sa.text("CURRENT_TIMESTAMP")
+    row_id_type = sa.String(length=36)
+    app_data_user_id_type = sa.UUID(as_uuid=False) if dialect == "postgresql" else sa.String(length=36)
 
     op.create_table(
         "app_users",
-        sa.Column("id", sa.String(length=36), primary_key=True),
+        sa.Column("id", row_id_type, primary_key=True),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("password_hash", sa.Text(), nullable=False),
         sa.Column("token_version", sa.Integer(), nullable=False, server_default="0"),
@@ -45,8 +47,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "password_reset_tokens",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", row_id_type, nullable=False),
         sa.Column("token_hash", sa.Text(), nullable=False),
         sa.Column("expires_at", datetime_type, nullable=False),
         sa.Column("used_at", datetime_type, nullable=True),
@@ -60,8 +62,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "loans",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=128), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", app_data_user_id_type, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("principal", sa.Numeric(12, 2), nullable=False),
         sa.Column("interest_rate", sa.Numeric(5, 2), nullable=False),
@@ -78,8 +80,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "assets",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=128), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", app_data_user_id_type, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("asset_type", sa.String(length=80), nullable=False),
         sa.Column("value", sa.Numeric(14, 2), nullable=False),
@@ -93,8 +95,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "watchlists",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=128), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", app_data_user_id_type, nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")),
@@ -106,8 +108,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "watchlist_items",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("watchlist_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("watchlist_id", row_id_type, nullable=False),
         sa.Column("symbol", sa.String(length=16), nullable=False),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("added_date", datetime_type, server_default=now_default),
@@ -121,8 +123,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "signin_otps",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", row_id_type, nullable=False),
         sa.Column("code_hash", sa.Text(), nullable=False),
         sa.Column("expires_at", datetime_type, nullable=False),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
@@ -187,7 +189,7 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "snaptrade_portfolio_balance_snapshots",
-        sa.Column("id", sa.String(length=36), primary_key=True),
+        sa.Column("id", row_id_type, primary_key=True),
         sa.Column("user_id", sa.String(length=128), nullable=False),
         sa.Column("snapshot_date", sa.Date(), nullable=False),
         sa.Column("total_balance", sa.Numeric(14, 2), nullable=False),
@@ -205,8 +207,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "plaid_items",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", row_id_type, nullable=False),
         sa.Column("plaid_item_id", sa.String(length=128), nullable=False),
         sa.Column("access_token_encrypted", sa.Text(), nullable=False),
         sa.Column("transaction_cursor", sa.Text(), nullable=True),
@@ -226,9 +228,9 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "plaid_accounts",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), nullable=False),
-        sa.Column("item_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", row_id_type, nullable=False),
+        sa.Column("item_id", row_id_type, nullable=False),
         sa.Column("plaid_account_id", sa.String(length=128), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("official_name", sa.String(length=255), nullable=True),
@@ -253,8 +255,8 @@ def _create_baseline_tables(dialect: str) -> None:
 
     op.create_table(
         "cashflow_entries",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("id", row_id_type, primary_key=True),
+        sa.Column("user_id", row_id_type, nullable=False),
         sa.Column("source", sa.String(length=24), nullable=False, server_default="manual"),
         sa.Column("type", sa.String(length=16), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
@@ -278,4 +280,3 @@ def _create_baseline_tables(dialect: str) -> None:
     op.create_index("idx_cashflow_entries_date", "cashflow_entries", ["date"], if_not_exists=True)
     op.create_index("idx_cashflow_entries_plaid_transaction_id", "cashflow_entries", ["plaid_transaction_id"], if_not_exists=True)
     op.create_index("idx_cashflow_entries_removed_at", "cashflow_entries", ["removed_at"], if_not_exists=True)
-

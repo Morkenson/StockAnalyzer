@@ -3,11 +3,30 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from database import Base
 
+class GUID(TypeDecorator):
+    impl = String(36)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(UUID(as_uuid=False))
+        return dialect.type_descriptor(String(36))
+
+    def process_bind_param(self, value, dialect):
+        return str(value) if value is not None else None
+
+    def process_result_value(self, value, dialect):
+        return str(value) if value is not None else None
+
+
 USER_ID = String(36)
+APP_DATA_USER_ID = GUID()
 EXTERNAL_ID = String(128)
 ROW_ID = String(36)
 SHORT_CODE = String(16)
@@ -54,7 +73,7 @@ class Loan(Base):
     __tablename__ = "loans"
 
     id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    user_id: Mapped[str] = mapped_column(APP_DATA_USER_ID, index=True)
     name: Mapped[str] = mapped_column(NAME)
     principal: Mapped[float] = mapped_column(LOAN_MONEY)
     interest_rate: Mapped[float] = mapped_column(Numeric(5, 2))
@@ -71,7 +90,7 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    user_id: Mapped[str] = mapped_column(APP_DATA_USER_ID, index=True)
     name: Mapped[str] = mapped_column(NAME)
     asset_type: Mapped[str] = mapped_column(String(80))
     value: Mapped[float] = mapped_column(MONEY)
@@ -85,7 +104,7 @@ class Watchlist(Base):
     __tablename__ = "watchlists"
 
     id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    user_id: Mapped[str] = mapped_column(APP_DATA_USER_ID, index=True)
     name: Mapped[str] = mapped_column(NAME)
     description: Mapped[str | None] = mapped_column(Text)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)

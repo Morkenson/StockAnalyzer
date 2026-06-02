@@ -1,4 +1,4 @@
-.PHONY: help test coverage backend-test backend-coverage frontend-test coverage-summary clean-coverage up down build rebuild logs ps backend-shell frontend-shell clean
+.PHONY: help test coverage backend-test backend-coverage frontend-test coverage-summary e2e e2e-install e2e-headed e2e-report clean-coverage up down build rebuild logs ps backend-shell frontend-shell clean
 
 help:
 	@echo "Available targets:"
@@ -7,6 +7,10 @@ help:
 	@echo "  make backend-test      Run backend pytest suite"
 	@echo "  make backend-coverage  Run backend pytest suite with coverage"
 	@echo "  make frontend-test     Run frontend Jest suite with coverage"
+	@echo "  make e2e-install       Install Playwright and browsers"
+	@echo "  make e2e               Run Playwright e2e tests (requires running dev server)"
+	@echo "  make e2e-headed        Run Playwright e2e tests in headed mode"
+	@echo "  make e2e-report        Open last Playwright HTML report"
 	@echo "  make clean-coverage    Remove generated coverage output"
 	@echo "  make up                Start Docker services"
 	@echo "  make down              Stop Docker services"
@@ -31,6 +35,18 @@ frontend-test:
 
 coverage-summary:
 	@node scripts/coverage-summary.js
+
+e2e-install:
+	cd e2e && npm install && npx playwright install
+
+e2e:
+	cd e2e && npx playwright test
+
+e2e-headed:
+	cd e2e && npx playwright test --headed
+
+e2e-report:
+	cd e2e && npx playwright show-report ../coverage/e2e
 
 clean-coverage:
 	-@powershell -NoProfile -Command "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue coverage, backend/.coverage, backend/htmlcov, frontend/coverage"
