@@ -1,4 +1,5 @@
 import { FormBuilder } from '@angular/forms';
+import { Router } from '@angular/router';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 
 import { NetWorthComponent } from '../../app/components/net-worth.component';
@@ -67,16 +68,18 @@ describe('NetWorthComponent', () => {
     const snapTradeService = {
       getPortfolio: jest.fn().mockReturnValue(portfolio$)
     };
+    const router = { navigate: jest.fn() };
     const component = new NetWorthComponent(
       new FormBuilder(),
       assetService as unknown as AssetService,
       loanService as unknown as LoanService,
-      snapTradeService as unknown as SnapTradeService
+      snapTradeService as unknown as SnapTradeService,
+      router as unknown as Router
     );
 
     component.ngOnInit();
 
-    return { component, assets$, loans$, snapTradeService };
+    return { component, assets$, loans$, snapTradeService, router };
   }
 
   it('adds connected portfolios and manual assets, then subtracts saved loan principal', () => {
@@ -112,16 +115,11 @@ describe('NetWorthComponent', () => {
     component.ngOnDestroy();
   });
 
-  it('toggles the in-page debt calculator', () => {
-    const { component } = createComponent(of(connectedPortfolio));
+  it('navigates to the debt page when goToDebt is called', () => {
+    const { component, router } = createComponent(of(connectedPortfolio));
 
-    expect(component.showDebtCalculator).toBe(false);
-
-    component.toggleDebtCalculator();
-    expect(component.showDebtCalculator).toBe(true);
-
-    component.toggleDebtCalculator();
-    expect(component.showDebtCalculator).toBe(false);
+    component.goToDebt();
+    expect(router.navigate).toHaveBeenCalledWith(['/networth/debt']);
 
     component.ngOnDestroy();
   });

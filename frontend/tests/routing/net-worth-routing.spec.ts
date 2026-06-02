@@ -25,10 +25,10 @@ describe('Net Worth routing', () => {
     expect(route?.pathMatch).toBe('full');
   });
 
-  it('redirects the old debt calculator route to net worth', () => {
+  it('redirects the old debt calculator route to the debt page', () => {
     const route = routes.find(candidate => candidate.path === 'debt-calculator');
 
-    expect(route?.redirectTo).toBe('/networth');
+    expect(route?.redirectTo).toBe('/networth/debt');
     expect(route?.pathMatch).toBe('full');
   });
 });
