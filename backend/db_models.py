@@ -25,10 +25,10 @@ class GUID(TypeDecorator):
         return str(value) if value is not None else None
 
 
-USER_ID = String(36)
+USER_ID = GUID()
 APP_DATA_USER_ID = GUID()
 EXTERNAL_ID = String(128)
-ROW_ID = String(36)
+ROW_ID = GUID()
 SHORT_CODE = String(16)
 CURRENCY = String(8)
 NAME = String(255)
