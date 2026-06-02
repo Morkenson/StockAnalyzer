@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
-from sqlalchemy import delete as sql_delete, select
+from sqlalchemy import String, cast, delete as sql_delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -144,6 +144,10 @@ def _clear_auth_cookie(response: Response) -> None:
     response.delete_cookie("access_token", path="/")
 
 
+def _text_eq(column, value: str):
+    return cast(column, String) == str(value)
+
+
 def _current_user(request: Request, db: Session = Depends(get_db)) -> AppUser:
     token = request.cookies.get("access_token")
     auth_header = request.headers.get("Authorization", "")
@@ -155,7 +159,7 @@ def _current_user(request: Request, db: Session = Depends(get_db)) -> AppUser:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session")
-    user = db.get(AppUser, payload.get("sub"))
+    user = db.scalar(select(AppUser).where(_text_eq(AppUser.id, payload.get("sub"))))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
     if int(payload.get("tv", 0)) != int(user.token_version or 0):
@@ -222,7 +226,9 @@ def _watchlist_item_row(item: WatchlistItem) -> dict:
 
 
 def _ensure_watchlist(db: Session, user_id: str, watchlist_id: str) -> Watchlist:
-    watchlist = db.scalar(select(Watchlist).where(Watchlist.id == watchlist_id, Watchlist.user_id == user_id))
+    watchlist = db.scalar(
+        select(Watchlist).where(_text_eq(Watchlist.id, watchlist_id), _text_eq(Watchlist.user_id, user_id))
+    )
     if not watchlist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
     return watchlist
@@ -265,7 +271,7 @@ async def signin(
         password_ok = False
     if not user or not password_ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
+    db.execute(sql_delete(SigninOtp).where(_text_eq(SigninOtp.user_id, user.id)))
     if _has_recent_otp(user):
         db.commit()
         _set_auth_cookie(response, _create_access_token(user))
@@ -281,7 +287,7 @@ async def signin(
 async def verify_otp(payload: OtpVerify, request: Request, response: Response, db: Session = Depends(get_db)):
     _rate_limit(request, "verify-otp", limit=10, window_seconds=300)
     otp = db.scalar(
-        select(SigninOtp).where(SigninOtp.user_id == payload.pending_user_id, SigninOtp.expires_at > _now())
+        select(SigninOtp).where(_text_eq(SigninOtp.user_id, payload.pending_user_id), SigninOtp.expires_at > _now())
     )
     if not otp or otp.attempts >= OTP_MAX_ATTEMPTS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired code")
@@ -291,7 +297,7 @@ async def verify_otp(payload: OtpVerify, request: Request, response: Response, d
         remaining = OTP_MAX_ATTEMPTS - otp.attempts
         detail = "Invalid code" if remaining > 0 else "Too many incorrect attempts. Please sign in again."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
-    user = db.get(AppUser, otp.user_id)
+    user = db.scalar(select(AppUser).where(_text_eq(AppUser.id, otp.user_id)))
     user.otp_verified_until = _otp_trust_expires_at()
     db.delete(otp)
     db.commit()
@@ -302,9 +308,9 @@ async def verify_otp(payload: OtpVerify, request: Request, response: Response, d
 @router.post("/auth/resend-otp")
 async def resend_otp(payload: OtpResend, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     _rate_limit(request, "resend-otp", limit=3, window_seconds=300)
-    user = db.get(AppUser, payload.pending_user_id)
+    user = db.scalar(select(AppUser).where(_text_eq(AppUser.id, payload.pending_user_id)))
     if user:
-        db.execute(sql_delete(SigninOtp).where(SigninOtp.user_id == user.id))
+        db.execute(sql_delete(SigninOtp).where(_text_eq(SigninOtp.user_id, user.id)))
         code = f"{secrets.randbelow(1_000_000):06d}"
         db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
         db.commit()
@@ -368,7 +374,7 @@ async def reset_password(payload: PasswordResetConfirm, request: Request, db: Se
     )
     if not row:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
-    user = db.get(AppUser, row.user_id)
+    user = db.scalar(select(AppUser).where(_text_eq(AppUser.id, row.user_id)))
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset token")
     user.password_hash = _hash_password(payload.password)
@@ -381,7 +387,7 @@ async def reset_password(payload: PasswordResetConfirm, request: Request, db: Se
 
 @router.get("/loans")
 async def get_loans(user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
-    loans = db.scalars(select(Loan).where(Loan.user_id == user.id).order_by(Loan.created_at.desc())).all()
+    loans = db.scalars(select(Loan).where(_text_eq(Loan.user_id, user.id)).order_by(Loan.created_at.desc())).all()
     return ApiResponse(success=True, data=[_loan_row(loan) for loan in loans]).model_dump(by_alias=True)
 
 
@@ -411,7 +417,7 @@ async def update_loan(
     user: AppUser = Depends(_current_user),
     db: Session = Depends(get_db),
 ):
-    loan = db.scalar(select(Loan).where(Loan.id == loan_id, Loan.user_id == user.id))
+    loan = db.scalar(select(Loan).where(_text_eq(Loan.id, loan_id), _text_eq(Loan.user_id, user.id)))
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
     for key, value in payload.model_dump(exclude_unset=True).items():
@@ -423,7 +429,7 @@ async def update_loan(
 
 @router.delete("/loans/{loan_id}")
 async def delete_loan(loan_id: str, user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
-    loan = db.scalar(select(Loan).where(Loan.id == loan_id, Loan.user_id == user.id))
+    loan = db.scalar(select(Loan).where(_text_eq(Loan.id, loan_id), _text_eq(Loan.user_id, user.id)))
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
     db.delete(loan)
@@ -433,7 +439,7 @@ async def delete_loan(loan_id: str, user: AppUser = Depends(_current_user), db: 
 
 @router.get("/assets")
 async def get_assets(user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
-    assets = db.scalars(select(Asset).where(Asset.user_id == user.id).order_by(Asset.created_at.desc())).all()
+    assets = db.scalars(select(Asset).where(_text_eq(Asset.user_id, user.id)).order_by(Asset.created_at.desc())).all()
     return ApiResponse(success=True, data=[_asset_row(asset) for asset in assets]).model_dump(by_alias=True)
 
 
@@ -466,7 +472,7 @@ async def update_asset(
     user: AppUser = Depends(_current_user),
     db: Session = Depends(get_db),
 ):
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
+    asset = db.scalar(select(Asset).where(_text_eq(Asset.id, asset_id), _text_eq(Asset.user_id, user.id)))
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     updates = payload.model_dump(exclude_unset=True)
@@ -485,7 +491,7 @@ async def update_asset(
 
 @router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
-    asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
+    asset = db.scalar(select(Asset).where(_text_eq(Asset.id, asset_id), _text_eq(Asset.user_id, user.id)))
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     db.delete(asset)
@@ -497,7 +503,7 @@ async def delete_asset(asset_id: str, user: AppUser = Depends(_current_user), db
 async def get_watchlists(user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
     watchlists = db.scalars(
         select(Watchlist)
-        .where(Watchlist.user_id == user.id)
+        .where(_text_eq(Watchlist.user_id, user.id))
         .order_by(Watchlist.is_default.desc(), Watchlist.created_at.asc())
     ).all()
     return ApiResponse(success=True, data=[_watchlist_row(watchlist) for watchlist in watchlists]).model_dump(
@@ -512,7 +518,7 @@ async def create_watchlist(
     db: Session = Depends(get_db),
 ):
     if payload.is_default:
-        db.query(Watchlist).filter(Watchlist.user_id == user.id).update({"is_default": False})
+        db.query(Watchlist).filter(_text_eq(Watchlist.user_id, user.id)).update({"is_default": False})
     watchlist = Watchlist(
         user_id=user.id,
         name=payload.name.strip(),
@@ -535,7 +541,7 @@ async def update_watchlist(
     watchlist = _ensure_watchlist(db, user.id, watchlist_id)
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("is_default"):
-        db.query(Watchlist).filter(Watchlist.user_id == user.id, Watchlist.id != watchlist_id).update(
+        db.query(Watchlist).filter(_text_eq(Watchlist.user_id, user.id), cast(Watchlist.id, String) != watchlist_id).update(
             {"is_default": False}
         )
     for key, value in updates.items():
@@ -565,7 +571,7 @@ async def get_watchlist_items(
     _ensure_watchlist(db, user.id, watchlist_id)
     items = db.scalars(
         select(WatchlistItem)
-        .where(WatchlistItem.watchlist_id == watchlist_id)
+        .where(_text_eq(WatchlistItem.watchlist_id, watchlist_id))
         .order_by(WatchlistItem.added_date.asc())
     ).all()
     return ApiResponse(success=True, data=[_watchlist_item_row(item) for item in items]).model_dump(by_alias=True)
@@ -602,7 +608,7 @@ async def delete_watchlist_item(
     _ensure_watchlist(db, user.id, watchlist_id)
     item = db.scalar(
         select(WatchlistItem).where(
-            WatchlistItem.watchlist_id == watchlist_id,
+            _text_eq(WatchlistItem.watchlist_id, watchlist_id),
             WatchlistItem.symbol == symbol.strip().upper(),
         )
     )

@@ -19,8 +19,6 @@ def upgrade() -> None:
     dialect = bind.dialect.name
 
     _create_baseline_tables(dialect)
-    if dialect == "postgresql":
-        _migrate_app_owned_user_ids_to_text()
 
 
 def downgrade() -> None:
@@ -281,24 +279,3 @@ def _create_baseline_tables(dialect: str) -> None:
     op.create_index("idx_cashflow_entries_plaid_transaction_id", "cashflow_entries", ["plaid_transaction_id"], if_not_exists=True)
     op.create_index("idx_cashflow_entries_removed_at", "cashflow_entries", ["removed_at"], if_not_exists=True)
 
-
-def _migrate_app_owned_user_ids_to_text() -> None:
-    for table_name in ("loans", "assets", "watchlists"):
-        op.execute(
-            f"""
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = current_schema()
-                      AND table_name = '{table_name}'
-                      AND column_name = 'user_id'
-                      AND udt_name = 'uuid'
-                ) THEN
-                    ALTER TABLE {table_name}
-                    ALTER COLUMN user_id TYPE VARCHAR(128) USING user_id::text;
-                END IF;
-            END $$;
-            """
-        )

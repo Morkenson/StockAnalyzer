@@ -13,24 +13,6 @@ branch_labels = None
 depends_on = None
 
 
-ID_COLUMNS = {
-    "app_users": {"id": "VARCHAR(36)"},
-    "password_reset_tokens": {"id": "VARCHAR(36)", "user_id": "VARCHAR(36)"},
-    "loans": {"id": "VARCHAR(36)", "user_id": "VARCHAR(128)"},
-    "assets": {"id": "VARCHAR(36)", "user_id": "VARCHAR(128)"},
-    "watchlists": {"id": "VARCHAR(36)", "user_id": "VARCHAR(128)"},
-    "watchlist_items": {"id": "VARCHAR(36)", "watchlist_id": "VARCHAR(36)"},
-    "signin_otps": {"id": "VARCHAR(36)", "user_id": "VARCHAR(36)"},
-    "snaptrade_user_secrets": {"user_id": "VARCHAR(128)"},
-    "snaptrade_account_preferences": {"user_id": "VARCHAR(128)", "account_id": "VARCHAR(128)"},
-    "snaptrade_dividend_preferences": {"user_id": "VARCHAR(128)"},
-    "snaptrade_recurring_investment_preferences": {"user_id": "VARCHAR(128)", "account_id": "VARCHAR(128)"},
-    "snaptrade_portfolio_balance_snapshots": {"id": "VARCHAR(36)", "user_id": "VARCHAR(128)"},
-    "plaid_items": {"id": "VARCHAR(36)", "user_id": "VARCHAR(36)"},
-    "plaid_accounts": {"id": "VARCHAR(36)", "user_id": "VARCHAR(36)", "item_id": "VARCHAR(36)"},
-    "cashflow_entries": {"id": "VARCHAR(36)", "user_id": "VARCHAR(36)"},
-}
-
 NOT_NULL_COLUMNS = {
     "app_users": ("email", "password_hash", "token_version"),
     "password_reset_tokens": ("user_id", "token_hash", "expires_at"),
@@ -98,36 +80,12 @@ def upgrade() -> None:
 
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     _ensure_legacy_columns()
-    _normalize_id_column_types()
     _normalize_defaults()
     _normalize_not_null_constraints()
 
 
 def downgrade() -> None:
     pass
-
-
-def _normalize_id_column_types() -> None:
-    for table_name, columns in ID_COLUMNS.items():
-        for column_name, target_type in columns.items():
-            op.execute(
-                f"""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1
-                        FROM information_schema.columns
-                        WHERE table_schema = current_schema()
-                          AND table_name = '{table_name}'
-                          AND column_name = '{column_name}'
-                          AND data_type NOT IN ('character varying', 'text')
-                    ) THEN
-                        ALTER TABLE {table_name}
-                        ALTER COLUMN {column_name} TYPE {target_type} USING {column_name}::text;
-                    END IF;
-                END $$;
-                """
-            )
 
 
 def _ensure_legacy_columns() -> None:
