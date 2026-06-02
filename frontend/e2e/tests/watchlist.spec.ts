@@ -168,19 +168,20 @@ test.describe('Watchlist', () => {
   });
 
   test('Remove button deletes stock from watchlist', async ({ authenticatedPage: page }) => {
-    await page.unroute('**/api/watchlists/*/items');
-    await page.route('**/api/watchlists/*/items', (route) => {
+    let removed = false;
+    // Use ** to match DELETE /items/AAPL (symbol is an extra segment after /items)
+    await page.route('**/api/watchlists/**', (route) => {
       if (route.request().method() === 'DELETE') {
+        removed = true;
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
       } else {
         route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ success: true, data: [MOCK_AAPL_ITEM] }),
+          body: JSON.stringify({ success: true, data: removed ? [] : [MOCK_AAPL_ITEM] }),
         });
       }
     });
-    await page.unroute('**/api/stock/quotes');
     await page.route('**/api/stock/quotes', (route) =>
       route.fulfill({
         status: 200,
@@ -189,7 +190,8 @@ test.describe('Watchlist', () => {
       })
     );
     await page.goto('/watchlist');
-    await expect(page.getByText('AAPL')).toBeVisible();
+    // Check the table row specifically — AAPL also appears in <strong> in other sections
+    await expect(page.locator('.watchlist-row').filter({ hasText: 'AAPL' })).toBeVisible();
 
     const removeResp = page.waitForResponse(
       (resp) => resp.url().includes('/items') && resp.request().method() === 'DELETE'
@@ -197,6 +199,6 @@ test.describe('Watchlist', () => {
     await page.getByRole('button', { name: 'Remove AAPL from watchlist' }).click();
     await removeResp;
 
-    await expect(page.getByText('AAPL')).not.toBeVisible();
+    await expect(page.locator('.watchlist-row').filter({ hasText: 'AAPL' })).not.toBeVisible();
   });
 });
