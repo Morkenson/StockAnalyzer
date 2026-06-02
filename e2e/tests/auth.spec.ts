@@ -36,7 +36,7 @@ test.describe('Login page', () => {
   });
 
   test('shows error message on invalid credentials', async ({ unauthenticatedPage: page }) => {
-    await page.route('**/api/auth/login', (route) =>
+    await page.route('**/api/auth/signin', (route) =>
       route.fulfill({
         status: 401,
         contentType: 'application/json',
@@ -52,7 +52,7 @@ test.describe('Login page', () => {
   });
 
   test('shows OTP step after successful login', async ({ unauthenticatedPage: page }) => {
-    await page.route('**/api/auth/login', (route) =>
+    await page.route('**/api/auth/signin', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

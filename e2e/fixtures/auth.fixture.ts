@@ -7,10 +7,16 @@ const MOCK_USER = {
 };
 
 /**
- * Intercepts /api/auth/me to return an authenticated user, bypassing OTP.
- * Used by tests that need to access protected routes.
+ * Sets up an authenticated session by:
+ * 1. Injecting the user into localStorage via addInitScript (runs before Angular bootstraps,
+ *    so the auth service reads it synchronously before the guard fires)
+ * 2. Mocking /api/auth/me so the async validation also succeeds
  */
 async function mockAuthenticatedSession(page: Page): Promise<void> {
+  await page.addInitScript((user) => {
+    localStorage.setItem('stock_analyzer_user', JSON.stringify(user));
+  }, MOCK_USER);
+
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
       status: 200,

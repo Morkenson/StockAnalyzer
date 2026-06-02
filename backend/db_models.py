@@ -77,7 +77,7 @@ class Loan(Base):
     name: Mapped[str] = mapped_column(NAME)
     principal: Mapped[float] = mapped_column(LOAN_MONEY)
     interest_rate: Mapped[float] = mapped_column(Numeric(5, 2))
-    loan_term: Mapped[int]
+    loan_term: Mapped[int] = mapped_column(Integer)
     monthly_payment: Mapped[float] = mapped_column(LOAN_MONEY)
     total_amount_paid: Mapped[float] = mapped_column(LOAN_MONEY)
     total_interest: Mapped[float] = mapped_column(LOAN_MONEY)

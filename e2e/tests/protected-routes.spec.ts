@@ -26,15 +26,14 @@ test.describe('Auth guard — unauthenticated redirects', () => {
 
 test.describe('Auth guard — authenticated access', () => {
   test('allows access to /dashboard when authenticated', async ({ authenticatedPage: page }) => {
-    // Mock stock API calls the dashboard makes
-    await page.route('**/api/stocks/**', (route) =>
+    await page.route('**/api/stock/quotes', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ success: true, data: [] }),
       })
     );
-    await page.route('**/api/watchlist/**', (route) =>
+    await page.route('**/api/watchlists', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -48,11 +47,23 @@ test.describe('Auth guard — authenticated access', () => {
   });
 
   test('redirects authenticated user away from /login to /dashboard', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/stock/quotes', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
+    await page.route('**/api/watchlists', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
     await page.goto('/login');
     await expect(page).toHaveURL('/dashboard');
   });
 
   test('redirects authenticated user away from /signup to /dashboard', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/stock/quotes', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
+    await page.route('**/api/watchlists', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
     await page.goto('/signup');
     await expect(page).toHaveURL('/dashboard');
   });
@@ -60,12 +71,11 @@ test.describe('Auth guard — authenticated access', () => {
 
 test.describe('Navigation header', () => {
   test('shows nav links when authenticated', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/**', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: [] }),
-      })
+    await page.route('**/api/stock/quotes', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
+    await page.route('**/api/watchlists', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
     );
 
     await page.goto('/dashboard');
@@ -78,12 +88,11 @@ test.describe('Navigation header', () => {
   });
 
   test('header search is visible when authenticated', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/**', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: [] }),
-      })
+    await page.route('**/api/stock/quotes', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
+    await page.route('**/api/watchlists', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
     );
 
     await page.goto('/dashboard');

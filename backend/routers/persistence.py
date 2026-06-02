@@ -393,21 +393,26 @@ async def get_loans(user: AppUser = Depends(_current_user), db: Session = Depend
 
 @router.post("/loans", status_code=status.HTTP_201_CREATED)
 async def create_loan(payload: LoanCreate, user: AppUser = Depends(_current_user), db: Session = Depends(get_db)):
-    loan = Loan(
-        user_id=user.id,
-        name=payload.name.strip(),
-        principal=payload.principal,
-        interest_rate=payload.interest_rate,
-        loan_term=payload.loan_term,
-        monthly_payment=payload.monthly_payment,
-        total_amount_paid=payload.total_amount_paid,
-        total_interest=payload.total_interest,
-        notes=payload.notes.strip() if payload.notes else None,
-    )
-    db.add(loan)
-    db.commit()
-    db.refresh(loan)
-    return ApiResponse(success=True, data=_loan_row(loan)).model_dump(by_alias=True)
+    try:
+        loan = Loan(
+            user_id=user.id,
+            name=payload.name.strip(),
+            principal=payload.principal,
+            interest_rate=payload.interest_rate,
+            loan_term=payload.loan_term,
+            monthly_payment=payload.monthly_payment,
+            total_amount_paid=payload.total_amount_paid,
+            total_interest=payload.total_interest,
+            notes=payload.notes.strip() if payload.notes else None,
+        )
+        db.add(loan)
+        db.commit()
+        db.refresh(loan)
+        return ApiResponse(success=True, data=_loan_row(loan)).model_dump(by_alias=True)
+    except Exception:
+        db.rollback()
+        logger.exception("create_loan failed for user_id=%s payload=%s", user.id, payload.model_dump())
+        raise
 
 
 @router.patch("/loans/{loan_id}")

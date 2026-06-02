@@ -8,14 +8,14 @@ const MARKET_QUOTES = [
 
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ authenticatedPage }) => {
-    await authenticatedPage.route('**/api/stocks/quotes*', (route) =>
+    await authenticatedPage.route('**/api/stock/quotes', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ success: true, data: MARKET_QUOTES }),
       })
     );
-    await authenticatedPage.route('**/api/watchlist', (route) =>
+    await authenticatedPage.route('**/api/watchlists', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -63,32 +63,28 @@ test.describe('Dashboard', () => {
   });
 
   test('shows watchlist stocks when watchlist has items', async ({ authenticatedPage: page }) => {
-    await page.unroute('**/api/watchlist');
-    await page.route('**/api/watchlist', (route) =>
+    await page.unroute('**/api/watchlists');
+    await page.route('**/api/watchlists', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ success: true, data: [{ symbol: 'AAPL', name: 'Apple Inc.' }] }),
       })
     );
-    await page.route('**/api/stocks/quotes*', (route) => {
-      const url = route.request().url();
-      if (url.includes('AAPL')) {
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            data: [{ symbol: 'AAPL', name: 'Apple Inc.', price: 195.0, change: 2.5, changePercent: 1.3 }],
-          }),
-        });
-      }
-      return route.fulfill({
+    await page.unroute('**/api/stock/quotes');
+    await page.route('**/api/stock/quotes', (route) =>
+      route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: MARKET_QUOTES }),
-      });
-    });
+        body: JSON.stringify({
+          success: true,
+          data: [
+            ...MARKET_QUOTES,
+            { symbol: 'AAPL', name: 'Apple Inc.', price: 195.0, change: 2.5, changePercent: 1.3 },
+          ],
+        }),
+      })
+    );
 
     await page.goto('/dashboard');
     await expect(page.getByText('AAPL')).toBeVisible();
