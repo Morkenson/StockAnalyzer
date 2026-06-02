@@ -220,15 +220,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for Angular frontend (match C# backend behavior)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_frontend_origins(),
-    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", DEFAULT_CORS_ORIGIN_REGEX),
-    allow_credentials=True,
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
-    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-)
+def _cors_middleware(app):
+    return CORSMiddleware(
+        app=app,
+        allow_origins=_frontend_origins(),
+        allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", DEFAULT_CORS_ORIGIN_REGEX),
+        allow_credentials=True,
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    )
+
 
 # Mount under /api so frontend baseUrl http://localhost:5000/api works
 app.include_router(stock.router, prefix="/api")
@@ -268,6 +269,11 @@ async def keepalive():
 @app.get("/api/cors-debug")
 async def cors_debug():
     return {"allowedOrigins": _frontend_origins()}
+
+
+_fastapi_app = app
+app = _cors_middleware(_fastapi_app)
+app.dependency_overrides = _fastapi_app.dependency_overrides
 
 
 if __name__ == "__main__":

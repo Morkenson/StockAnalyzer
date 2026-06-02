@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 
-from main import app
+from fastapi import FastAPI
+
+from main import _cors_middleware, app
 
 
 def test_custom_frontend_origin_preflight_is_allowed():
@@ -27,3 +29,33 @@ def test_cors_debug_includes_custom_frontend_origin():
 
     assert response.status_code == 200
     assert "https://mork-wealth.zachary-mork-portfolio.dev" in response.json()["allowedOrigins"]
+
+
+def test_loan_route_includes_cors_header_for_frontend_origin():
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/loans",
+        headers={"Origin": "https://mork-wealth.zachary-mork-portfolio.dev"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["access-control-allow-origin"] == "https://mork-wealth.zachary-mork-portfolio.dev"
+
+
+def test_server_errors_include_cors_header_for_frontend_origin():
+    error_app = FastAPI()
+
+    @error_app.get("/api/error")
+    async def error_route():
+        raise RuntimeError("boom")
+
+    client = TestClient(_cors_middleware(error_app), raise_server_exceptions=False)
+
+    response = client.get(
+        "/api/error",
+        headers={"Origin": "https://mork-wealth.zachary-mork-portfolio.dev"},
+    )
+
+    assert response.status_code == 500
+    assert response.headers["access-control-allow-origin"] == "https://mork-wealth.zachary-mork-portfolio.dev"

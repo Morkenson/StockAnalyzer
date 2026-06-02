@@ -70,3 +70,25 @@ API docs: http://localhost:5000/docs
 The backend owns keepalive. On startup it runs a background task that executes `SELECT 1` through SQLAlchemy using `DATABASE_URL`, then repeats once per day.
 
 You can also manually check it at `GET /api/keepalive`.
+
+## Database Migrations
+
+The backend uses Alembic for SQLAlchemy schema migrations. App startup runs:
+
+```bash
+alembic -c database/alembic.ini upgrade head
+```
+
+from the `backend/` directory before serving requests. To run migrations manually:
+
+```bash
+cd backend
+alembic -c database/alembic.ini upgrade head
+```
+
+To create a new migration after changing `db_models.py`:
+
+```bash
+cd backend
+alembic -c database/alembic.ini revision --autogenerate -m "describe change"
+```

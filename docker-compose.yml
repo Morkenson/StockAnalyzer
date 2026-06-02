@@ -26,11 +26,12 @@ services:
     ports:
       - "5000:5000"
     command: >
+      sh -c "alembic -c database/alembic.ini upgrade head &&
       uvicorn main:app --host 0.0.0.0 --port 5000 --proxy-headers
       --reload --reload-dir /app
       --reload-exclude pytest-cache-files-*
       --reload-exclude .pytest_cache
-      --reload-exclude __pycache__
+      --reload-exclude __pycache__"
     volumes:
       - ./backend:/app
     depends_on:
@@ -62,7 +63,6 @@ services:
       - "5432:5432"
     volumes:
       - stockanalyzer-db:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U stockanalyzer -d stockanalyzer"]
       interval: 10s

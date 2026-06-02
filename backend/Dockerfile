@@ -13,4 +13,4 @@ COPY backend/ .
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-5000} --proxy-headers"]
+CMD ["sh", "-c", "alembic -c database/alembic.ini upgrade head && uvicorn main:app --host 0.0.0.0 --port ${PORT:-5000} --proxy-headers"]

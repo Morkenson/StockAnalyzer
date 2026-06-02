@@ -7,6 +7,7 @@ def test_init_db_adds_snaptrade_preference_schema():
     init_db()
     inspector = inspect(engine)
 
+    assert "alembic_version" in inspector.get_table_names()
     assert "snaptrade_recurring_investment_preferences" in inspector.get_table_names()
     account_columns = {column["name"] for column in inspector.get_columns("snaptrade_account_preferences")}
     assert "margin_balance" in account_columns
