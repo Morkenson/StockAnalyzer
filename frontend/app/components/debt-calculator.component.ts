@@ -529,7 +529,8 @@ export class DebtCalculatorComponent implements OnInit, OnDestroy {
       this.resetForm();
     } catch (error: any) {
       console.error('Error saving loan:', error);
-      alert('Failed to save loan: ' + (error.message || 'Unknown error'));
+      const detail = error?.error?.detail || error?.error?.message || error?.message || 'Unknown error';
+      alert('Failed to save loan: ' + detail);
     } finally {
       this.savingLoan = false;
     }
@@ -592,7 +593,8 @@ export class DebtCalculatorComponent implements OnInit, OnDestroy {
       this.showCalculator = false;
     } catch (error: any) {
       console.error('Error updating loan:', error);
-      alert('Failed to update loan: ' + (error.message || 'Unknown error'));
+      const detail = error?.error?.detail || error?.error?.message || error?.message || 'Unknown error';
+      alert('Failed to update loan: ' + detail);
     } finally {
       this.savingLoan = false;
     }
@@ -619,7 +621,8 @@ export class DebtCalculatorComponent implements OnInit, OnDestroy {
       this.cdr.detectChanges();
     } catch (error: any) {
       console.error('Error deleting loan:', error);
-      alert('Failed to delete loan: ' + (error.message || 'Unknown error'));
+      const detail = error?.error?.detail || error?.error?.message || error?.message || 'Unknown error';
+      alert('Failed to delete loan: ' + detail);
     }
   }
 
