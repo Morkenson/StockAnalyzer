@@ -1,4 +1,4 @@
-.PHONY: help test coverage backend-test backend-coverage frontend-test coverage-summary e2e e2e-install e2e-headed e2e-report clean-coverage up down build rebuild logs ps backend-shell frontend-shell clean
+.PHONY: help test coverage backend-test backend-coverage backend-integration-test frontend-test coverage-summary e2e e2e-install e2e-headed e2e-report clean-coverage up down build rebuild logs ps backend-shell frontend-shell clean
 
 help:
 	@echo "Available targets:"
@@ -6,6 +6,7 @@ help:
 	@echo "  make coverage          Run all configured tests with coverage scores"
 	@echo "  make backend-test      Run backend pytest suite"
 	@echo "  make backend-coverage  Run backend pytest suite with coverage"
+	@echo "  make backend-integration-test  Run PostgreSQL migration integration tests (requires docker compose up db -d)"
 	@echo "  make frontend-test     Run frontend Jest suite with coverage"
 	@echo "  make e2e-install       Install Playwright and browsers"
 	@echo "  make e2e               Run Playwright e2e tests (requires running dev server)"
@@ -20,12 +21,16 @@ help:
 	@echo "  make ps                Show Docker service status"
 	@echo "  make clean             Stop Docker services and remove volumes"
 
-test: coverage
+test: backend-integration-test coverage
 
 coverage: backend-coverage frontend-test coverage-summary
 
 backend-test:
 	cd backend && python -m pytest
+
+backend-integration-test:
+	docker compose up db -d
+	cd backend && python -m pytest -m integration -v
 
 backend-coverage:
 	cd backend && python -m pytest --cov=. --cov-config=.coveragerc --cov-report=term-missing --cov-report=html:../coverage/backend --cov-report=json:../coverage/backend/coverage.json

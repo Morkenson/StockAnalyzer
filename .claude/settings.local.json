@@ -34,7 +34,21 @@
       "Bash(psql -U postgres -c \"SELECT 1 as test\")",
       "Bash(docker --version)",
       "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\" -Recurse -Filter \"*.component.ts\")",
-      "Bash(python -m pytest tests/ -x -q --tb=short)"
+      "Bash(python -m pytest tests/ -x -q --tb=short)",
+      "Bash(python -m pytest backend/ -x -q)",
+      "Bash(git add *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\\\\src\\\\app\" -Recurse -Directory)",
+      "PowerShell(ls -Path \"c:\\\\Github Projects\\\\StockAnalyzer\\\\\")",
+      "PowerShell(head -30)",
+      "PowerShell(ls \"c:\\\\Github Projects\\\\StockAnalyzer\\\\frontend\\\\app\\\\components\\\\\" | Where-Object {$_.Name -match \"\\(portfolio|account-detail|debt-calculator\\)\"}  | Select-Object Name)",
+      "Bash(npx playwright *)",
+      "Bash(python -m pytest backend/ -x -q --ignore=backend/tests/test_database_migrations.py)",
+      "Bash(python -m pytest backend/tests/test_database_migrations.py -m integration -v)",
+      "Bash(findstr \":5432\")",
+      "Bash(Get-Process -Id 6488, 7500)",
+      "Bash(Select-Object Id, Name, Path)",
+      "PowerShell(Get-Process -Id 6488, 7500)",
+      "Bash(python -m pytest backend/ -q --ignore=backend/tests/test_database_migrations.py)"
     ]
   }
 }
