@@ -45,10 +45,12 @@ def test_signup_requires_otp_then_cookie_and_me_returns_user(client):
     verify = client.post("/api/auth/verify-otp", json={"pendingUserId": pending_user_id, "code": last_code[0]})
     assert verify.status_code == 200
     assert verify.json()["data"]["user"]["email"] == email
+    assert verify.json()["data"]["token"]
     assert "access_token=" in verify.headers["set-cookie"]
     assert "HttpOnly" in verify.headers["set-cookie"]
 
-    me = client.get("/api/auth/me")
+    token = verify.json()["data"]["token"]
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["data"]["user"]["email"] == email
 
@@ -88,6 +90,7 @@ def test_signin_skips_otp_when_recently_verified(client):
 
     assert signin.status_code == 200
     assert signin.json()["data"]["user"]["email"] == email
+    assert signin.json()["data"]["token"]
     assert "pendingUserId" not in signin.json()["data"]
     assert "access_token=" in signin.headers["set-cookie"]
     send_otp.assert_not_called()
@@ -180,6 +183,37 @@ def test_password_reset_changes_password(client):
     new_login = client.post("/api/auth/signin", json={"email": email, "password": "new-secure-pass"})
     assert new_login.status_code == 200
     assert new_login.json()["data"]["pendingUserId"]
+
+
+def test_request_password_reset_sends_email_with_reset_link(client):
+    email = _email()
+
+    with patch("services.email_service.send_otp_email", new=AsyncMock()):
+        client.post("/api/auth/signup", json={"email": email, "password": "very-secure-pass"})
+
+    sent: list[tuple[str, str]] = []
+
+    async def capture(to_email: str, reset_link: str) -> None:
+        sent.append((to_email, reset_link))
+
+    with patch("services.email_service.send_password_reset_email", new=AsyncMock(side_effect=capture)):
+        reset = client.post("/api/auth/request-password-reset", json={"email": email})
+
+    assert reset.status_code == 200
+    token = reset.json()["data"]["resetToken"]
+    assert len(sent) == 1
+    to_email, reset_link = sent[0]
+    assert to_email == email
+    assert "/reset-password?token=" in reset_link
+    assert token in reset_link
+
+
+def test_request_password_reset_unknown_email_sends_no_email(client):
+    with patch("services.email_service.send_password_reset_email", new=AsyncMock()) as send_email:
+        resp = client.post("/api/auth/request-password-reset", json={"email": _email()})
+
+    assert resp.status_code == 200
+    send_email.assert_not_called()
 
 
 def test_password_reset_clears_recent_otp_trust(client):

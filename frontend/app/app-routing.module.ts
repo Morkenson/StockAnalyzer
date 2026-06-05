@@ -8,6 +8,8 @@ import { AccountDetailComponent } from './components/account-detail.component';
 import { PortfolioComponent } from './components/portfolio.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
+import { ForgotPasswordComponent } from './components/forgot-password.component';
+import { ResetPasswordComponent } from './components/reset-password.component';
 import { NetWorthComponent } from './components/net-worth.component';
 import { IncomeExpensesComponent } from './components/income-expenses.component';
 import { SettingsComponent } from './components/settings.component';
@@ -18,6 +20,8 @@ export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
   { path: 'signup', component: SignupComponent },
+  { path: 'forgot-password', component: ForgotPasswordComponent },
+  { path: 'reset-password', component: ResetPasswordComponent },
   { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard] },
   { path: 'search', component: StockSearchComponent, canActivate: [AuthGuard] },
   { path: 'stock/:symbol', component: StockDetailsComponent, canActivate: [AuthGuard] },

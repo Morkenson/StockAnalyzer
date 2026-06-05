@@ -158,9 +158,32 @@ describe('AuthService', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 
-  it('does not expose bearer tokens on the frontend', async () => {
+  it('has no bearer token before authentication', async () => {
     const service = createService();
     await service.waitForInitialization();
+
+    expect(service.getAccessToken()).toBeNull();
+  });
+
+  it('stores and exposes the bearer token returned on sign in', async () => {
+    const service = createService(of({ success: true }));
+    await service.waitForInitialization();
+    http.post.mockReturnValueOnce(of({ success: true, data: { user, token: 'jwt-token-1' } }));
+
+    await service.signIn(user.email, 'password');
+
+    expect(service.getAccessToken()).toBe('jwt-token-1');
+    expect(localStorage.getItem('stock_analyzer_token')).toBe('jwt-token-1');
+  });
+
+  it('clears the bearer token on signout', async () => {
+    const service = createService(of({ success: true }));
+    await service.waitForInitialization();
+    http.post.mockReturnValueOnce(of({ success: true, data: { user, token: 'jwt-token-1' } }));
+    await service.signIn(user.email, 'password');
+    http.post.mockReturnValueOnce(of({ success: true }));
+
+    await service.signOut();
 
     expect(service.getAccessToken()).toBeNull();
   });

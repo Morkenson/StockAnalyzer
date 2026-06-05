@@ -1,58 +1,73 @@
 import { Component, OnInit, OnDestroy, HostListener, ElementRef, ViewChild } from '@angular/core';
 import { FormControl } from '@angular/forms';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { AppUser, AuthService } from '../../services/auth.service';
 import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
 @Component({
   selector: 'app-header',
   template: `
-    <header class="header">
+    <header class="header" [class.menu-open]="isMobileMenuOpen">
       <div class="container">
         <div class="header-content">
-          <a routerLink="/dashboard" class="logo" aria-label="Mork Wealth Home">
+          <a routerLink="/dashboard" class="logo" aria-label="Mork Wealth Home" (click)="closeMobileMenu()">
             <span class="logo-text">Mork Wealth</span>
           </a>
-          
-          <div class="header-search" *ngIf="isAuthenticated">
-            <div class="search-input-wrapper">
-              <input 
-                type="text" 
-                [formControl]="searchControl"
-                placeholder="Search stocks..."
-                class="header-search-input"
-                (keyup.enter)="onSearch()"
-                aria-label="Search stocks">
-              <button 
-                class="search-button"
-                (click)="onSearch()"
-                [attr.aria-label]="'Search for ' + searchControl.value"
-                [disabled]="!searchControl.value || searchControl.value.trim().length === 0">
-                Go
-              </button>
-            </div>
-          </div>
 
-          <nav class="nav" role="navigation" aria-label="Main navigation" *ngIf="isAuthenticated">
-            <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
-              Dashboard
-            </a>
-            <a routerLink="/watchlist" routerLinkActive="active">
-              Watchlist
-            </a>
-            <a routerLink="/portfolio" routerLinkActive="active">
-              Portfolio
-            </a>
-            <a routerLink="/networth" routerLinkActive="active">
-              Net Worth
-            </a>
-            <a routerLink="/income-expenses" routerLinkActive="active">
-              Income
-            </a>
-            <a routerLink="/settings" routerLinkActive="active">
-              Settings
-            </a>
-          </nav>
+          <button
+            *ngIf="isAuthenticated"
+            type="button"
+            class="menu-toggle"
+            (click)="toggleMobileMenu()"
+            aria-label="Toggle navigation menu"
+            [attr.aria-expanded]="isMobileMenuOpen">
+            <span class="menu-toggle-bars" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+          </button>
+
+          <div class="header-collapse" *ngIf="isAuthenticated">
+            <div class="header-search">
+              <div class="search-input-wrapper">
+                <input
+                  type="text"
+                  [formControl]="searchControl"
+                  placeholder="Search stocks..."
+                  class="header-search-input"
+                  (keyup.enter)="onSearch()"
+                  aria-label="Search stocks">
+                <button
+                  class="search-button"
+                  (click)="onSearch()"
+                  [attr.aria-label]="'Search for ' + searchControl.value"
+                  [disabled]="!searchControl.value || searchControl.value.trim().length === 0">
+                  Go
+                </button>
+              </div>
+            </div>
+
+            <nav class="nav" role="navigation" aria-label="Main navigation">
+              <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" (click)="closeMobileMenu()">
+                Dashboard
+              </a>
+              <a routerLink="/watchlist" routerLinkActive="active" (click)="closeMobileMenu()">
+                Watchlist
+              </a>
+              <a routerLink="/portfolio" routerLinkActive="active" (click)="closeMobileMenu()">
+                Portfolio
+              </a>
+              <a routerLink="/networth" routerLinkActive="active" (click)="closeMobileMenu()">
+                Net Worth
+              </a>
+              <a routerLink="/income-expenses" routerLinkActive="active" (click)="closeMobileMenu()">
+                Income
+              </a>
+              <a routerLink="/settings" routerLinkActive="active" (click)="closeMobileMenu()">
+                Settings
+              </a>
+            </nav>
+          </div>
 
           <div class="auth-section">
             <div *ngIf="isAuthenticated && currentUser" class="user-menu-wrapper">
@@ -90,7 +105,9 @@ export class HeaderComponent implements OnInit, OnDestroy {
   isAuthenticated = false;
   currentUser: AppUser | null = null;
   isUserMenuOpen = false;
+  isMobileMenuOpen = false;
   private authSubscription?: Subscription;
+  private routerSubscription?: Subscription;
 
   constructor(
     private router: Router,
@@ -106,21 +123,29 @@ export class HeaderComponent implements OnInit, OnDestroy {
       // Close menu when user logs out
       if (!user) {
         this.isUserMenuOpen = false;
+        this.isMobileMenuOpen = false;
       }
     });
+
+    // Close the mobile menu whenever navigation completes
+    this.routerSubscription = this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe(() => {
+        this.isMobileMenuOpen = false;
+      });
   }
 
   ngOnDestroy(): void {
     this.authSubscription?.unsubscribe();
+    this.routerSubscription?.unsubscribe();
   }
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
-    if (this.isUserMenuOpen && this.userDropdown) {
-      const clickedInside = this.elementRef.nativeElement.contains(event.target);
-      if (!clickedInside) {
-        this.isUserMenuOpen = false;
-      }
+    const clickedInside = this.elementRef.nativeElement.contains(event.target);
+    if (!clickedInside) {
+      this.isUserMenuOpen = false;
+      this.isMobileMenuOpen = false;
     }
   }
 
@@ -133,6 +158,14 @@ export class HeaderComponent implements OnInit, OnDestroy {
 
   toggleUserMenu(): void {
     this.isUserMenuOpen = !this.isUserMenuOpen;
+  }
+
+  toggleMobileMenu(): void {
+    this.isMobileMenuOpen = !this.isMobileMenuOpen;
+  }
+
+  closeMobileMenu(): void {
+    this.isMobileMenuOpen = false;
   }
 
   onSearch(): void {

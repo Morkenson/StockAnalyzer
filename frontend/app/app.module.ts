@@ -19,6 +19,8 @@ import { StockCardComponent } from './components/shared/stock-card.component';
 import { StockChartComponent } from './components/shared/stock-chart.component';
 import { LoginComponent } from './components/login.component';
 import { SignupComponent } from './components/signup.component';
+import { ForgotPasswordComponent } from './components/forgot-password.component';
+import { ResetPasswordComponent } from './components/reset-password.component';
 import { DebtCalculatorComponent } from './components/debt-calculator.component';
 import { NetWorthComponent } from './components/net-worth.component';
 import { IncomeExpensesComponent } from './components/income-expenses.component';
@@ -40,6 +42,8 @@ import { AuthInterceptor } from './services/auth.interceptor';
     StockChartComponent,
     LoginComponent,
     SignupComponent,
+    ForgotPasswordComponent,
+    ResetPasswordComponent,
     DebtCalculatorComponent,
     NetWorthComponent,
     IncomeExpensesComponent,

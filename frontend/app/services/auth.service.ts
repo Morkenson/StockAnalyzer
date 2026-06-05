@@ -20,6 +20,7 @@ interface ApiResponse<T> {
 interface AuthPayload {
   user?: AppUser;
   pendingUserId?: string;
+  token?: string;
 }
 
 @Injectable({
@@ -27,6 +28,7 @@ interface AuthPayload {
 })
 export class AuthService {
   private readonly userKey = 'stock_analyzer_user';
+  private readonly tokenKey = 'stock_analyzer_token';
   private apiUrl = environment.api.baseUrl;
   private currentUserSubject = new BehaviorSubject<AppUser | null>(null);
   public currentUser$: Observable<AppUser | null> = this.currentUserSubject.asObservable();
@@ -51,8 +53,7 @@ export class AuthService {
         this.setUser(response.data.user);
       }
     } catch {
-      localStorage.removeItem(this.userKey);
-      this.currentUserSubject.next(null);
+      this.clearLocalSession();
     } finally {
       this.initializedSubject.next(true);
     }
@@ -76,7 +77,7 @@ export class AuthService {
       if (!response.data?.user) {
         throw new Error(response.message || 'Failed to create account');
       }
-      this.setUser(response.data.user);
+      this.setUser(response.data.user, response.data.token);
       return { user: response.data.user, error: null };
     } catch (error: any) {
       return { user: null, error: this.normalizeError(error) };
@@ -94,7 +95,7 @@ export class AuthService {
       if (!response.data?.user) {
         throw new Error(response.message || 'Failed to sign in');
       }
-      this.setUser(response.data.user);
+      this.setUser(response.data.user, response.data.token);
       return { user: response.data.user, error: null };
     } catch (error: any) {
       return { user: null, error: this.normalizeError(error) };
@@ -109,7 +110,7 @@ export class AuthService {
       if (!response.data?.user) {
         throw new Error(response.message || 'Verification failed');
       }
-      this.setUser(response.data.user);
+      this.setUser(response.data.user, response.data.token);
       return { user: response.data.user, error: null };
     } catch (error: any) {
       return { user: null, error: this.normalizeError(error) };
@@ -172,16 +173,20 @@ export class AuthService {
   }
 
   getAccessToken(): string | null {
-    return null;
+    return localStorage.getItem(this.tokenKey);
   }
 
-  private setUser(user: AppUser): void {
+  private setUser(user: AppUser, token?: string): void {
     localStorage.setItem(this.userKey, JSON.stringify(user));
+    if (token) {
+      localStorage.setItem(this.tokenKey, token);
+    }
     this.currentUserSubject.next(user);
   }
 
   private clearLocalSession(): void {
     localStorage.removeItem(this.userKey);
+    localStorage.removeItem(this.tokenKey);
     this.currentUserSubject.next(null);
   }
 

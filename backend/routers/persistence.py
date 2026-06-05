@@ -47,6 +47,7 @@ ACCESS_TOKEN_MINUTES = 60
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").lower()
 RESET_TOKEN_MINUTES = 30
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://mork-wealth.zachary-mork-portfolio.dev").rstrip("/")
 OTP_EXPIRE_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
 OTP_TRUST_HOURS = 4
@@ -274,8 +275,9 @@ async def signin(
     db.execute(sql_delete(SigninOtp).where(_text_eq(SigninOtp.user_id, user.id)))
     if _has_recent_otp(user):
         db.commit()
-        _set_auth_cookie(response, _create_access_token(user))
-        return ApiResponse(success=True, data={"user": _user_row(user)}).model_dump(by_alias=True)
+        token = _create_access_token(user)
+        _set_auth_cookie(response, token)
+        return ApiResponse(success=True, data={"user": _user_row(user), "token": token}).model_dump(by_alias=True)
     code = f"{secrets.randbelow(1_000_000):06d}"
     db.add(SigninOtp(user_id=user.id, code_hash=_token_hash(code), expires_at=_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)))
     db.commit()
@@ -301,8 +303,9 @@ async def verify_otp(payload: OtpVerify, request: Request, response: Response, d
     user.otp_verified_until = _otp_trust_expires_at()
     db.delete(otp)
     db.commit()
-    _set_auth_cookie(response, _create_access_token(user))
-    return ApiResponse(success=True, data={"user": _user_row(user)}).model_dump(by_alias=True)
+    token = _create_access_token(user)
+    _set_auth_cookie(response, token)
+    return ApiResponse(success=True, data={"user": _user_row(user), "token": token}).model_dump(by_alias=True)
 
 
 @router.post("/auth/resend-otp")
@@ -336,7 +339,12 @@ async def me(user: AppUser = Depends(_current_user)):
 
 
 @router.post("/auth/request-password-reset")
-async def request_password_reset(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     _rate_limit(request, "password-reset", limit=5, window_seconds=300)
     user = db.scalar(select(AppUser).where(AppUser.email == payload.email.strip().lower()))
     reset_token: str | None = None
@@ -350,6 +358,8 @@ async def request_password_reset(payload: PasswordResetRequest, request: Request
             )
         )
         db.commit()
+        reset_link = f"{APP_BASE_URL}/reset-password?token={reset_token}"
+        background_tasks.add_task(email_service.send_password_reset_email, user.email, reset_link)
     if reset_token and os.getenv("DEBUG_EXPOSE_RESET_TOKEN") == "1":
         logger.warning("password reset token exposed in response (DEBUG_EXPOSE_RESET_TOKEN=1) for user_id=%s", user.id)
         data = {"resetToken": reset_token}

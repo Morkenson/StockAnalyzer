@@ -581,10 +581,6 @@ textarea:focus {
     --font-size-3xl: 1.65rem;
   }
 
-  .header {
-    height: 136px;
-  }
-
   .card {
     padding: var(--spacing-lg);
   }
@@ -830,6 +826,75 @@ textarea:focus {
   background: var(--color-primary-light);
 }
 
+/* On desktop the collapse wrapper is transparent — search + nav participate
+   directly in the header flex layout exactly as before. */
+.header-collapse {
+  display: contents;
+}
+
+/* Hamburger toggle — hidden on desktop, revealed at the mobile breakpoint. */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+  transition: border-color var(--transition-base), background var(--transition-base);
+}
+
+.menu-toggle:hover {
+  border-color: rgba(94, 234, 212, 0.28);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.menu-toggle-bars {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 14px;
+}
+
+.menu-toggle-bars span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-primary);
+  transition: transform var(--transition-base), opacity var(--transition-base), top var(--transition-base);
+}
+
+.menu-toggle-bars span:nth-child(1) {
+  top: 0;
+}
+
+.menu-toggle-bars span:nth-child(2) {
+  top: 6px;
+}
+
+.menu-toggle-bars span:nth-child(3) {
+  top: 12px;
+}
+
+.header.menu-open .menu-toggle-bars span:nth-child(1) {
+  top: 6px;
+  transform: rotate(45deg);
+}
+
+.header.menu-open .menu-toggle-bars span:nth-child(2) {
+  opacity: 0;
+}
+
+.header.menu-open .menu-toggle-bars span:nth-child(3) {
+  top: 6px;
+  transform: rotate(-45deg);
+}
+
 @media (max-width: 1180px) {
   .header-search {
     max-width: 320px;
@@ -837,29 +902,22 @@ textarea:focus {
 }
 
 @media (max-width: 900px) {
+  .header {
+    height: 64px;
+  }
+
   .header-content {
-    flex-wrap: wrap;
-    align-content: center;
     gap: var(--spacing-sm);
   }
 
-  .header-search {
-    order: 4;
-    width: 100%;
-    max-width: none;
-    flex-basis: 100%;
-  }
-
-  .nav {
+  /* Show the hamburger; group it after the avatar on the right. */
+  .menu-toggle {
+    display: inline-flex;
     order: 3;
-    max-width: calc(100vw - 2rem);
-    overflow-x: auto;
   }
 
-  .nav a {
-    flex: 0 0 auto;
-    padding: 0.5rem 0.65rem;
-    font-size: var(--font-size-xs);
+  .logo {
+    flex: 1 1 auto;
   }
 
   .logo-text {
@@ -867,7 +925,57 @@ textarea:focus {
   }
 
   .auth-section {
-    margin-left: auto;
+    order: 2;
+  }
+
+  /* Collapse wrapper becomes a real slide-down panel anchored under the bar. */
+  .header-collapse {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: block;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    background: #121820;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--shadow-xl);
+    transition: max-height var(--transition-base), opacity var(--transition-base), visibility var(--transition-base);
+  }
+
+  .header.menu-open .header-collapse {
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    padding: var(--spacing-md);
+  }
+
+  .header-collapse .header-search {
+    width: 100%;
+    max-width: none;
+    margin-bottom: var(--spacing-md);
+  }
+
+  /* Stack nav links vertically; drop the desktop pill chrome. */
+  .header-collapse .nav {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-xs);
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .header-collapse .nav a {
+    width: 100%;
+    padding: 0.8rem var(--spacing-md);
+    font-size: var(--font-size-base);
   }
 }
 
@@ -2370,10 +2478,11 @@ textarea:focus {
 
   .header-actions {
     width: 100%;
+    flex-direction: column;
   }
 
   .header-actions .btn {
-    flex: 1;
+    width: 100%;
   }
 
   .portfolio-summary {
@@ -4781,10 +4890,18 @@ textarea:focus,
     width: 100%;
   }
 
-  .hero-actions .btn,
-  .header-actions .btn,
+  /* Stack action controls full-width so long button labels and date inputs
+     don't get squeezed into clipped equal columns on narrow screens. */
+  .hero-actions,
+  .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions > *,
+  .header-actions > *,
   .debt-hero > .btn {
-    flex: 1;
+    width: 100%;
   }
 
   .portfolio-hero h1,
