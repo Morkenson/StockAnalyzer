@@ -198,6 +198,27 @@ async def get_portfolio_snapshots(
         )
 
 
+@router.get("/accounts/{account_id}/snapshots")
+async def get_account_snapshots(
+    account_id: str,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        snapshots = portfolio_snapshot_svc.get_account_snapshots(db, user_id, account_id)
+        return ApiResponse(success=True, data=snapshots).model_dump(by_alias=True)
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error fetching account snapshots")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
 @router.get("/accounts")
 async def get_accounts(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
     try:

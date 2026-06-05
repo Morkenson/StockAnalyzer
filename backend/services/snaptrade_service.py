@@ -1,4 +1,5 @@
 """SnapTrade API client for broker linking and portfolio data."""
+import ast
 import asyncio
 import json
 import logging
@@ -94,23 +95,76 @@ def _sdk_body(response):
 
 def _snaptrade_error_message(exc: Exception) -> str:
     api_response = getattr(exc, "api_response", None)
-    body = _to_plain(getattr(api_response, "body", None))
+    body = _snaptrade_error_body(exc)
     if isinstance(body, Mapping):
-        for key in ("message", "detail", "error", "status", "code"):
+        for key in ("message", "detail", "error", "status"):
             if body.get(key):
                 return str(body[key])
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors:
+            return "; ".join(str(error) for error in errors)
+    if isinstance(body, str) and body:
+        return body
     status = getattr(api_response, "status", None)
     if status:
         return f"SnapTrade request failed with status {status}"
     return str(exc)
 
 
+def _snaptrade_error_status(exc: Exception) -> int:
+    body = _snaptrade_error_body(exc)
+    if isinstance(body, Mapping):
+        status_code = body.get("status_code") or body.get("statusCode")
+        if isinstance(status_code, int):
+            return status_code
+        try:
+            return int(str(status_code))
+        except (TypeError, ValueError):
+            pass
+    api_response = getattr(exc, "api_response", None)
+    return getattr(api_response, "status", 400) or 400
+
+
+def _snaptrade_error_body(exc: Exception):
+    api_response = getattr(exc, "api_response", None)
+    body = _to_plain(getattr(api_response, "body", None))
+    if body:
+        return body
+
+    text = str(exc)
+    marker = "HTTP response body:"
+    if marker not in text:
+        return body
+
+    raw_body = text.split(marker, 1)[1].strip()
+    try:
+        return ast.literal_eval(raw_body)
+    except (SyntaxError, ValueError):
+        return raw_body
+
+
+def _redacted(value):
+    if isinstance(value, Mapping):
+        redacted = {}
+        for key, item in value.items():
+            key_text = str(key).lower()
+            if any(secret_key in key_text for secret_key in ("secret", "token", "authorization", "password")):
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = _redacted(item)
+        return redacted
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_redacted(item) for item in value]
+    return value
+
+
 async def _call_snaptrade(operation):
     try:
         return await operation()
     except snaptrade_exceptions.ApiException as exc:
-        api_response = getattr(exc, "api_response", None)
-        status = getattr(api_response, "status", 400) or 400
+        status = _snaptrade_error_status(exc)
+        body = _snaptrade_error_body(exc)
+        logger.warning("SnapTrade API exception status=%s body=%s", status, _redacted(body))
         raise SnapTradeServiceError(_snaptrade_error_message(exc), status_code=status) from exc
 
 

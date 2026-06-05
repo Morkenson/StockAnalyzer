@@ -205,6 +205,26 @@ class SnapTradePortfolioBalanceSnapshot(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class SnapTradeAccountBalanceSnapshot(Base):
+    __tablename__ = "snaptrade_account_balance_snapshots"
+    __table_args__ = (
+        UniqueConstraint("user_id", "account_id", "snapshot_date", name="uq_snaptrade_account_snapshot_user_account_date"),
+    )
+
+    id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    account_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    account_name: Mapped[str | None] = mapped_column(NAME)
+    snapshot_date: Mapped[date] = mapped_column(Date, index=True)
+    total_balance: Mapped[float] = mapped_column(MONEY)
+    total_gain_loss: Mapped[float] = mapped_column(MONEY, default=0)
+    total_gain_loss_percent: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
+    holding_count: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(CURRENCY, default="USD")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class PlaidItem(Base):
     __tablename__ = "plaid_items"
     __table_args__ = (UniqueConstraint("user_id", "plaid_item_id", name="uq_plaid_item_user_item"),)

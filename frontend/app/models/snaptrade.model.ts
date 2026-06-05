@@ -43,6 +43,17 @@ export interface PortfolioBalanceSnapshot {
   currency: string;
 }
 
+export interface AccountBalanceSnapshot {
+  snapshotDate: string;
+  accountId: string;
+  accountName?: string | null;
+  totalBalance: number;
+  totalGainLoss: number;
+  totalGainLossPercent: number;
+  holdingCount: number;
+  currency: string;
+}
+
 export interface RecurringInvestment {
   symbol: string;
   accountId: string;

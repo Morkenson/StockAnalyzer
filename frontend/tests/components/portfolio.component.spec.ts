@@ -11,7 +11,7 @@ describe('PortfolioComponent overview', () => {
       {
         id: 'acc-1',
         accountNumber: '001',
-        name: 'Brokerage',
+        name: 'Robinhood Individual',
         type: 'MARGIN',
         brokerageId: 'broker-1',
         balance: 1000,
@@ -34,7 +34,7 @@ describe('PortfolioComponent overview', () => {
       {
         id: 'acc-2',
         accountNumber: '002',
-        name: 'IRA',
+        name: 'Robinhood Crypto',
         type: 'CASH',
         brokerageId: 'broker-2',
         balance: 500,
@@ -204,6 +204,29 @@ describe('PortfolioComponent overview', () => {
     expect(component.getLargestHolding(account)?.symbol).toBe('AAPL');
     expect(component.getAccountDividendIncome(account)?.monthlyIncome).toBe(8);
     expect(component.getAccountMonthlyRecurringBuys(account)).toBeCloseTo(433.33, 2);
+  });
+
+  it('groups connected accounts by brokerage company', () => {
+    const { component } = createComponent();
+
+    expect(component.accountGroups).toHaveLength(1);
+    expect(component.accountGroups[0].name).toBe('Robinhood');
+    expect(component.accountGroups[0].accounts.map(account => account.id)).toEqual(['acc-1', 'acc-2']);
+    expect(component.accountGroups[0].totalValue).toBe(1500);
+    expect(component.accountGroups[0].totalGainLoss).toBe(70);
+  });
+
+  it('toggles company account groups open and closed', () => {
+    const { component } = createComponent();
+    const groupKey = component.accountGroups[0].key;
+
+    expect(component.isAccountGroupExpanded(groupKey)).toBe(false);
+
+    component.toggleAccountGroup(groupKey);
+    expect(component.isAccountGroupExpanded(groupKey)).toBe(true);
+
+    component.toggleAccountGroup(groupKey);
+    expect(component.isAccountGroupExpanded(groupKey)).toBe(false);
   });
 
   it('loads future estimates on demand from recurring buys and dividends', () => {

@@ -74,6 +74,18 @@ class PortfolioBalanceSnapshot(BaseModel):
     currency: str = "USD"
 
 
+class AccountBalanceSnapshot(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    snapshot_date: date
+    account_id: str = ""
+    account_name: str | None = None
+    total_balance: float = 0.0
+    total_gain_loss: float = 0.0
+    total_gain_loss_percent: float = 0.0
+    holding_count: int = 0
+    currency: str = "USD"
+
+
 class RecurringInvestment(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
     symbol: str = ""

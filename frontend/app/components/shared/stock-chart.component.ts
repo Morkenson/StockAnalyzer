@@ -45,8 +45,11 @@ export class StockChartComponent implements OnInit, OnChanges {
     },
     elements: {
       line: {
-        borderCapStyle: 'round',
-        borderJoinStyle: 'round'
+        borderCapStyle: 'butt',
+        borderJoinStyle: 'miter'
+      },
+      point: {
+        hoverBorderWidth: 2
       }
     },
     plugins: {
@@ -56,56 +59,49 @@ export class StockChartComponent implements OnInit, OnChanges {
       tooltip: {
         mode: 'index',
         intersect: false,
-        backgroundColor: '#101418',
-        borderColor: 'rgba(17, 24, 39, 0.08)',
+        backgroundColor: 'rgba(11, 14, 19, 0.94)',
+        borderColor: 'rgba(94, 234, 212, 0.24)',
         borderWidth: 1,
+        bodySpacing: 6,
+        boxPadding: 6,
+        caretPadding: 10,
+        caretSize: 7,
+        cornerRadius: 8,
         displayColors: false,
-        padding: 10,
-        titleColor: '#f9fafb',
-        bodyColor: '#f9fafb',
+        padding: {
+          top: 10,
+          right: 12,
+          bottom: 10,
+          left: 12
+        },
+        titleColor: '#f7f4ee',
+        bodyColor: '#c9d0d8',
         titleFont: {
+          size: 15,
+          weight: 'bold'
+        },
+        bodyFont: {
           size: 12,
           weight: 'normal'
         },
-        bodyFont: {
-          size: 13,
-          weight: 'bold'
-        },
         callbacks: {
           title: (tooltipItems) => {
-            const index = tooltipItems[0].dataIndex;
-            if (index >= 0 && index < this.sortedData.length) {
-              const date = new Date(this.sortedData[index].date);
-              const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
-              const dateText = date.toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-              });
+            const value = tooltipItems[0]?.parsed.y;
 
-              if (!hasTime) {
-                return dateText;
-              }
-
-              const timeText = date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit'
-              });
-
-              return `${dateText}, ${timeText}`;
-            }
-            return '';
-          },
-          label: (context) => {
-            const index = context.dataIndex;
-            const value = context.parsed.y;
-            
-            if (value === null || value === undefined || index < 0 || index >= this.sortedData.length) {
+            if (value === null || value === undefined) {
               return `${this.valueLabel}: N/A`;
             }
 
-            return `${this.valueLabel}: $${value.toFixed(2)}`;
+            return this.formatTooltipMoney(value);
+          },
+          label: (context) => {
+            const index = context.dataIndex;
+            
+            if (index < 0 || index >= this.sortedData.length) {
+              return '';
+            }
+
+            return this.formatTooltipDate(new Date(this.sortedData[index].date));
           }
         }
       }
@@ -200,8 +196,8 @@ export class StockChartComponent implements OnInit, OnChanges {
 
     const firstClose = this.sortedData[0].close;
     const lastClose = this.sortedData[this.sortedData.length - 1].close;
-    const lineColor = lastClose >= firstClose ? '#00c805' : '#ff5000';
-    const fillColor = lastClose >= firstClose ? 'rgba(0, 200, 5, 0.13)' : 'rgba(255, 80, 0, 0.13)';
+    const lineColor = lastClose >= firstClose ? '#00b806' : '#f04a17';
+    const fillColor = lastClose >= firstClose ? 'rgba(0, 184, 6, 0.1)' : 'rgba(240, 74, 23, 0.1)';
 
     this.chartData = {
       labels: labels,
@@ -212,10 +208,10 @@ export class StockChartComponent implements OnInit, OnChanges {
           borderColor: lineColor,
           backgroundColor: fillColor,
           fill: true,
-          tension: 0.06,
-          borderWidth: 3,
+          tension: 0,
+          borderWidth: 2.4,
           pointRadius: 0,
-          pointHoverRadius: 5,
+          pointHoverRadius: 4,
           pointBackgroundColor: lineColor,
           pointBorderColor: '#ffffff',
           pointBorderWidth: 2,
@@ -223,6 +219,37 @@ export class StockChartComponent implements OnInit, OnChanges {
         }
       ]
     };
+  }
+
+  private formatTooltipMoney(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  }
+
+  private formatTooltipDate(date: Date): string {
+    const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+    const dateText = date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    if (!hasTime) {
+      return dateText;
+    }
+
+    const timeText = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+
+    return `${dateText}, ${timeText}`;
   }
 }
 

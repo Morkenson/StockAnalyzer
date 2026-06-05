@@ -190,7 +190,7 @@ class TestFreshMigrations:
             "app_users", "loans", "assets", "watchlists", "watchlist_items",
             "signin_otps", "password_reset_tokens", "plaid_items", "plaid_accounts",
             "cashflow_entries", "snaptrade_user_secrets", "snaptrade_account_preferences",
-            "snaptrade_portfolio_balance_snapshots", "alembic_version",
+            "snaptrade_portfolio_balance_snapshots", "snaptrade_account_balance_snapshots", "alembic_version",
         }
         assert required <= tables
 

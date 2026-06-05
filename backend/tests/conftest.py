@@ -58,6 +58,7 @@ def clear_user_secrets():
             db_models.SnapTradeAccountPreference,
             db_models.SnapTradeDividendPreference,
             db_models.SnapTradeRecurringInvestmentPreference,
+            db_models.SnapTradeAccountBalanceSnapshot,
             db_models.SnapTradePortfolioBalanceSnapshot,
             db_models.AppUser,
         ):

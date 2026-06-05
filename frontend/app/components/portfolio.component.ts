@@ -18,6 +18,20 @@ type FutureProjection = {
   monthlyIncome: number;
 };
 
+type BrokerageBrand = {
+  key: string;
+  name: string;
+  logoText: string;
+  tone: string;
+};
+
+type AccountCompanyGroup = BrokerageBrand & {
+  accounts: Account[];
+  totalValue: number;
+  totalGainLoss: number;
+  holdingCount: number;
+};
+
 @Component({
   selector: 'app-portfolio',
   template: `
@@ -169,105 +183,148 @@ type FutureProjection = {
           <h2>Accounts</h2>
           <p>{{ portfolio.accounts.length }} connected {{ portfolio.accounts.length === 1 ? 'account' : 'accounts' }}</p>
         </div>
-        <div class="card" *ngFor="let account of portfolio.accounts">
-          <div
-            class="account-header"
-            role="button"
-            tabindex="0"
-            (click)="viewAccount(account)"
-            (keydown.enter)="viewAccount(account)"
-            (keydown.space)="viewAccount(account); $event.preventDefault()">
-            <div class="account-action-rail" (click)="$event.stopPropagation()">
-              <button
-                class="account-icon-btn"
-                type="button"
-                title="Rename account"
-                aria-label="Rename account"
-                (click)="startNicknameEdit(account, $event)"
-                [disabled]="savingAccountId === account.id || removingAccountId === account.id">
-                <span aria-hidden="true">&#9998;</span>
-              </button>
-              <button
-                class="account-icon-btn danger"
-                type="button"
-                title="Remove account"
-                aria-label="Remove account"
-                (click)="removeAccount(account, $event)"
-                [disabled]="savingAccountId === account.id || removingAccountId === account.id">
-                <span aria-hidden="true">&times;</span>
-              </button>
-            </div>
+        <section class="account-company-group" *ngFor="let group of accountGroups" [attr.aria-label]="group.name + ' accounts'">
+          <button
+            class="account-company-group-header"
+            type="button"
+            [id]="getAccountGroupHeaderElementId(group.key)"
+            [attr.aria-expanded]="isAccountGroupExpanded(group.key)"
+            [attr.aria-controls]="getAccountGroupElementId(group.key)"
+            (click)="toggleAccountGroup(group.key)">
             <div
               class="account-company-logo"
-              [ngClass]="getBrokerageLogoClass(account)"
-              [attr.aria-label]="getBrokerageBrand(account).name + ' logo'">
-              <span aria-hidden="true">{{ getBrokerageLogoText(account) }}</span>
+              [ngClass]="'account-company-logo-' + group.tone"
+              [attr.aria-label]="group.name + ' logo'">
+              <span aria-hidden="true">{{ group.logoText }}</span>
             </div>
-            <div class="account-info">
-              <h3>{{ account.nickname || account.name }}</h3>
-              <p class="account-meta">
-                <span *ngIf="account.nickname">{{ account.name }} / </span>{{ account.accountNumber }} / {{ account.type }}
-              </p>
-              <div class="account-card-stats" aria-label="Account core stats">
-                <div class="account-card-stat">
-                  <span>Total Value</span>
-                  <strong>{{ formatMoney(account.balance ?? getAccountTotalValue(account)) }}</strong>
-                </div>
-                <div class="account-card-stat">
-                  <span>Gain/Loss</span>
-                  <strong [class.positive]="getAccountTotalGainLoss(account) >= 0" [class.negative]="getAccountTotalGainLoss(account) < 0">
-                    {{ formatMoney(getAccountTotalGainLoss(account), true) }}
-                    ({{ getAccountTotalGainLossPercent(account) >= 0 ? '+' : '' }}{{ getAccountTotalGainLossPercent(account) | number:'1.2-2' }}%)
-                  </strong>
-                </div>
-                <div class="account-card-stat">
-                  <span>Allocation</span>
-                  <strong>{{ getPortfolioAllocation(account) | number:'1.2-2' }}%</strong>
-                </div>
-                <div class="account-card-stat">
-                  <span>Holdings</span>
-                  <strong>
-                    {{ account.holdings?.length || 0 }}
-                    <small *ngIf="getLargestHolding(account) as largest">({{ largest.symbol }})</small>
-                  </strong>
-                </div>
-                <div class="account-card-stat" *ngIf="getAccountDividendIncome(account) as dividend">
-                  <span>Monthly Div</span>
-                  <strong>{{ formatDividendMoney(dividend.monthlyIncome, dividend.currency) }}</strong>
-                </div>
-                <div class="account-card-stat" *ngIf="getAccountMonthlyRecurringBuys(account) > 0">
-                  <span>Monthly Recur</span>
-                  <strong>{{ formatMoney(getAccountMonthlyRecurringBuys(account)) }}</strong>
-                </div>
+            <div class="account-company-title">
+              <h3>{{ group.name }}</h3>
+              <p>{{ group.accounts.length }} {{ group.accounts.length === 1 ? 'account' : 'accounts' }}</p>
+            </div>
+            <div class="account-company-summary" aria-label="Company account summary">
+              <div>
+                <span>Total Value</span>
+                <strong>{{ formatMoney(group.totalValue) }}</strong>
+              </div>
+              <div>
+                <span>Gain/Loss</span>
+                <strong [class.positive]="group.totalGainLoss >= 0" [class.negative]="group.totalGainLoss < 0">
+                  {{ formatMoney(group.totalGainLoss, true) }}
+                </strong>
+              </div>
+              <div>
+                <span>Holdings</span>
+                <strong>{{ group.holdingCount }}</strong>
               </div>
             </div>
-            <div class="account-expand">
-              <span class="expand-icon">
-                &rsaquo;
-              </span>
-            </div>
+            <span class="expand-icon" [class.expanded]="isAccountGroupExpanded(group.key)" aria-hidden="true">&rsaquo;</span>
+          </button>
+
+          <div
+            class="account-company-account-list"
+            *ngIf="isAccountGroupExpanded(group.key)"
+            [id]="getAccountGroupElementId(group.key)">
+            <article class="account-row-shell" *ngFor="let account of group.accounts">
+              <div
+                class="account-header"
+                role="button"
+                tabindex="0"
+                (click)="viewAccount(account)"
+                (keydown.enter)="viewAccount(account)"
+                (keydown.space)="viewAccount(account); $event.preventDefault()">
+                <div class="account-action-rail" (click)="$event.stopPropagation()">
+                  <button
+                    class="account-icon-btn"
+                    type="button"
+                    title="Rename account"
+                    aria-label="Rename account"
+                    (click)="startNicknameEdit(account, $event)"
+                    [disabled]="savingAccountId === account.id || removingAccountId === account.id">
+                    <span aria-hidden="true">&#9998;</span>
+                  </button>
+                  <button
+                    class="account-icon-btn danger"
+                    type="button"
+                    title="Remove account"
+                    aria-label="Remove account"
+                    (click)="removeAccount(account, $event)"
+                    [disabled]="savingAccountId === account.id || removingAccountId === account.id">
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+                <div
+                  class="account-company-logo"
+                  [ngClass]="getBrokerageLogoClass(account)"
+                  [attr.aria-label]="getBrokerageBrand(account).name + ' logo'">
+                  <span aria-hidden="true">{{ getBrokerageLogoText(account) }}</span>
+                </div>
+                <div class="account-info">
+                  <h3>{{ account.nickname || account.name }}</h3>
+                  <p class="account-meta">
+                    <span *ngIf="account.nickname">{{ account.name }} / </span>{{ account.accountNumber }} / {{ account.type }}
+                  </p>
+                  <div class="account-card-stats" aria-label="Account core stats">
+                    <div class="account-card-stat">
+                      <span>Total Value</span>
+                      <strong>{{ formatMoney(getAccountDisplayValue(account)) }}</strong>
+                    </div>
+                    <div class="account-card-stat">
+                      <span>Gain/Loss</span>
+                      <strong [class.positive]="getAccountTotalGainLoss(account) >= 0" [class.negative]="getAccountTotalGainLoss(account) < 0">
+                        {{ formatMoney(getAccountTotalGainLoss(account), true) }}
+                        ({{ getAccountTotalGainLossPercent(account) >= 0 ? '+' : '' }}{{ getAccountTotalGainLossPercent(account) | number:'1.2-2' }}%)
+                      </strong>
+                    </div>
+                    <div class="account-card-stat">
+                      <span>Allocation</span>
+                      <strong>{{ getPortfolioAllocation(account) | number:'1.2-2' }}%</strong>
+                    </div>
+                    <div class="account-card-stat">
+                      <span>Holdings</span>
+                      <strong>
+                        {{ account.holdings?.length || 0 }}
+                        <small *ngIf="getLargestHolding(account) as largest">({{ largest.symbol }})</small>
+                      </strong>
+                    </div>
+                    <div class="account-card-stat" *ngIf="getAccountDividendIncome(account) as dividend">
+                      <span>Monthly Div</span>
+                      <strong>{{ formatDividendMoney(dividend.monthlyIncome, dividend.currency) }}</strong>
+                    </div>
+                    <div class="account-card-stat" *ngIf="getAccountMonthlyRecurringBuys(account) > 0">
+                      <span>Monthly Recur</span>
+                      <strong>{{ formatMoney(getAccountMonthlyRecurringBuys(account)) }}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div class="account-expand">
+                  <span class="expand-icon">
+                    &rsaquo;
+                  </span>
+                </div>
+              </div>
+              <div class="account-preferences" *ngIf="editingNicknameAccountId === account.id" (click)="$event.stopPropagation()">
+                <label [attr.for]="'nickname-' + account.id">Nickname</label>
+                <div class="account-preference-row">
+                  <input
+                    [id]="'nickname-' + account.id"
+                    class="form-input"
+                    type="text"
+                    maxlength="80"
+                    [(ngModel)]="nicknameDrafts[account.id]"
+                    [placeholder]="account.name"
+                    (keydown.enter)="saveNickname(account)"
+                    (keydown.escape)="cancelNicknameEdit()" />
+                  <button class="btn btn-primary" type="button" (click)="saveNickname(account)" [disabled]="savingAccountId === account.id">
+                    {{ savingAccountId === account.id ? 'Saving...' : 'Save' }}
+                  </button>
+                  <button class="btn btn-secondary" type="button" (click)="cancelNicknameEdit()" [disabled]="savingAccountId === account.id">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </article>
           </div>
-          <div class="account-preferences" *ngIf="editingNicknameAccountId === account.id" (click)="$event.stopPropagation()">
-            <label [attr.for]="'nickname-' + account.id">Nickname</label>
-            <div class="account-preference-row">
-              <input
-                [id]="'nickname-' + account.id"
-                class="form-input"
-                type="text"
-                maxlength="80"
-                [(ngModel)]="nicknameDrafts[account.id]"
-                [placeholder]="account.name"
-                (keydown.enter)="saveNickname(account)"
-                (keydown.escape)="cancelNicknameEdit()" />
-              <button class="btn btn-primary" type="button" (click)="saveNickname(account)" [disabled]="savingAccountId === account.id">
-                {{ savingAccountId === account.id ? 'Saving...' : 'Save' }}
-              </button>
-              <button class="btn btn-secondary" type="button" (click)="cancelNicknameEdit()" [disabled]="savingAccountId === account.id">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        </section>
       </section>
     </div>
   `,
@@ -281,6 +338,8 @@ export class PortfolioComponent implements OnInit {
   savingAccountId: string | null = null;
   removingAccountId: string | null = null;
   nicknameDrafts: { [accountId: string]: string } = {};
+  accountGroups: AccountCompanyGroup[] = [];
+  expandedAccountGroupKeys: { [groupKey: string]: boolean } = {};
   balanceHistory: StockHistoricalData[] = [];
   balanceHistoryLoading = false;
   chartChange = 0;
@@ -350,7 +409,7 @@ export class PortfolioComponent implements OnInit {
     return formatter.format(value || 0);
   }
 
-  getBrokerageBrand(account: Account): { key: string; name: string; logoText: string; tone: string } {
+  getBrokerageBrand(account: Account): BrokerageBrand {
     const searchable = `${account.nickname || ''} ${account.name || ''} ${account.brokerageId || ''}`.toLowerCase();
     const brand = this.brokerageBrands.find(item => searchable.includes(item.key));
 
@@ -404,6 +463,7 @@ export class PortfolioComponent implements OnInit {
     this.snapTradeService.getPortfolio(refresh).subscribe({
       next: (portfolio) => {
         this.portfolio = portfolio;
+        this.accountGroups = this.buildAccountGroups(portfolio.accounts || []);
         this.loading = false;
         this.loadBalanceHistory();
         this.loadAccountIncomeStats(refresh);
@@ -411,6 +471,8 @@ export class PortfolioComponent implements OnInit {
       error: (err) => {
         if (err.status === 404) {
           this.portfolio = null;
+          this.accountGroups = [];
+          this.expandedAccountGroupKeys = {};
           this.error = null;
           this.balanceHistory = [];
           this.futureProjections = [];
@@ -606,6 +668,40 @@ export class PortfolioComponent implements OnInit {
     return account.holdings.reduce((sum, holding) => sum + holding.totalValue, 0);
   }
 
+  getAccountDisplayValue(account: Account): number {
+    return account.balance ?? this.getAccountTotalValue(account);
+  }
+
+  toggleAccountGroup(groupKey: string): void {
+    const shouldOpen = !this.isAccountGroupExpanded(groupKey);
+    this.expandedAccountGroupKeys[groupKey] = shouldOpen;
+
+    if (shouldOpen) {
+      this.scrollAccountGroupHeaderToTop(groupKey);
+    }
+  }
+
+  isAccountGroupExpanded(groupKey: string): boolean {
+    return this.expandedAccountGroupKeys[groupKey] === true;
+  }
+
+  getAccountGroupElementId(groupKey: string): string {
+    return `account-company-${groupKey.replace(/[^a-z0-9_-]+/gi, '-')}`;
+  }
+
+  getAccountGroupHeaderElementId(groupKey: string): string {
+    return `${this.getAccountGroupElementId(groupKey)}-header`;
+  }
+
+  private scrollAccountGroupHeaderToTop(groupKey: string): void {
+    window.setTimeout(() => {
+      document.getElementById(this.getAccountGroupHeaderElementId(groupKey))?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    });
+  }
+
   getAccountTotalGainLoss(account: Account): number {
     if (!account.holdings || account.holdings.length === 0) {
       return 0;
@@ -668,6 +764,7 @@ export class PortfolioComponent implements OnInit {
     this.snapTradeService.updateAccountPreference(account.id, { nickname }).subscribe({
       next: (preference) => {
         account.nickname = preference.nickname || null;
+        this.accountGroups = this.buildAccountGroups(this.portfolio?.accounts || []);
         this.editingNicknameAccountId = null;
         this.savingAccountId = null;
       },
@@ -745,6 +842,29 @@ export class PortfolioComponent implements OnInit {
 
     this.chartChange = lastClose - firstClose;
     this.chartChangePercent = firstClose ? (this.chartChange / firstClose) * 100 : 0;
+  }
+
+  private buildAccountGroups(accounts: Account[]): AccountCompanyGroup[] {
+    const groupsByKey = new Map<string, AccountCompanyGroup>();
+
+    for (const account of accounts) {
+      const brand = this.getBrokerageBrand(account);
+      const group = groupsByKey.get(brand.key) || {
+        ...brand,
+        accounts: [],
+        totalValue: 0,
+        totalGainLoss: 0,
+        holdingCount: 0
+      };
+
+      group.accounts.push(account);
+      group.totalValue += this.getAccountDisplayValue(account);
+      group.totalGainLoss += this.getAccountTotalGainLoss(account);
+      group.holdingCount += account.holdings?.length || 0;
+      groupsByKey.set(brand.key, group);
+    }
+
+    return [...groupsByKey.values()].sort((left, right) => left.name.localeCompare(right.name));
   }
 }
 

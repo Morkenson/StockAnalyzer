@@ -25,6 +25,21 @@ def test_sdk_body_parses_raw_json_response():
     }
 
 
+def test_snaptrade_error_message_parses_generated_exception_body():
+    class GeneratedException(Exception):
+        def __str__(self):
+            return (
+                "(403)\nReason: Forbidden\n"
+                "HTTP response body: {'detail': 'Feature is not enabled for this customer or this connection', "
+                "'status_code': 403, 'code': '1141'}"
+            )
+
+    exc = GeneratedException()
+
+    assert svc._snaptrade_error_message(exc) == "Feature is not enabled for this customer or this connection"
+    assert svc._snaptrade_error_status(exc) == 403
+
+
 @pytest.mark.asyncio
 async def test_create_user_maps_response(monkeypatch):
     class Authentication:

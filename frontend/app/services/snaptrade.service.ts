@@ -4,6 +4,7 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import {
+  AccountBalanceSnapshot,
   DividendIncomeSummary,
   Portfolio,
   PortfolioBalanceSnapshot,
@@ -157,6 +158,28 @@ export class SnapTradeService {
         }),
         catchError(error => {
           console.error('Error fetching portfolio snapshots:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  getAccountSnapshots(accountId: string): Observable<AccountBalanceSnapshot[]> {
+    return this.http.get<ApiResponse<AccountBalanceSnapshot[]>>(`${this.apiUrl}/accounts/${encodeURIComponent(accountId)}/snapshots`)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to load account snapshots');
+        }),
+        catchError(error => {
+          console.error('Error fetching account snapshots:', {
+            status: error.status,
+            statusText: error.statusText,
+            url: error.url,
+            body: error.error,
+            message: error.message
+          });
           return throwError(() => error);
         })
       );

@@ -1,14 +1,24 @@
 from datetime import date
 
 from database import SessionLocal
-from models.snaptrade_models import Account, Portfolio
+from models.snaptrade_models import Account, Holding, Portfolio
 from services import portfolio_snapshot_service as svc
 
 
 def test_save_daily_snapshot_upserts_user_date():
     portfolio = Portfolio(
         user_id="user1",
-        accounts=[Account(id="acc1", name="Brokerage", balance=100, currency="USD")],
+        accounts=[
+            Account(
+                id="acc1",
+                name="Brokerage",
+                balance=100,
+                currency="USD",
+                holdings=[
+                    Holding(symbol="AAPL", quantity=1, total_value=100, gain_loss=5),
+                ],
+            )
+        ],
         total_balance=100,
         total_gain_loss=5,
         total_gain_loss_percent=5.26,
@@ -20,9 +30,15 @@ def test_save_daily_snapshot_upserts_user_date():
         portfolio.total_balance = 125
         second = svc.save_daily_snapshot(db, "user1", portfolio, snapshot_date=date(2026, 5, 10))
         snapshots = svc.get_snapshots(db, "user1")
+        account_snapshots = svc.get_account_snapshots(db, "user1", "acc1")
 
     assert first.snapshot_date == date(2026, 5, 10)
     assert second.total_balance == 125
     assert len(snapshots) == 1
     assert snapshots[0].total_balance == 125
     assert snapshots[0].account_count == 1
+    assert len(account_snapshots) == 1
+    assert account_snapshots[0].account_id == "acc1"
+    assert account_snapshots[0].total_balance == 100
+    assert account_snapshots[0].total_gain_loss == 5
+    assert account_snapshots[0].holding_count == 1

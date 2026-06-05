@@ -491,6 +491,28 @@ class TestGetAccountHoldings:
         assert resp.json()["data"][0]["symbol"] == "AAPL"
 
 
+class TestGetAccountSnapshots:
+    def test_requires_authentication(self):
+        app.dependency_overrides[_optional_current_user] = lambda: None
+        try:
+            resp = client.get("/api/snaptrade/accounts/acc1/snapshots", headers=HEADERS)
+        finally:
+            app.dependency_overrides[_optional_current_user] = lambda: FAKE_USER
+
+        assert resp.status_code == 401
+
+    def test_success(self):
+        with patch(
+            "routers.snaptrade.portfolio_snapshot_svc.get_account_snapshots",
+            return_value=[],
+        ) as get_snapshots:
+            resp = client.get("/api/snaptrade/accounts/acc1/snapshots", headers=HEADERS)
+
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+        get_snapshots.assert_called_once()
+
+
 class TestGetBrokerages:
     def test_success(self):
         with patch("routers.snaptrade.snaptrade_svc.get_brokerages", new=AsyncMock(return_value=MOCK_BROKERAGES)):

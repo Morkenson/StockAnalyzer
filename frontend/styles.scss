@@ -2274,6 +2274,14 @@ textarea:focus {
   color: var(--color-primary-light);
 }
 
+.holdings-table td:nth-child(5),
+.holdings-table td:nth-child(6),
+.holdings-table td:nth-child(7),
+.holdings-table td:nth-child(8) {
+  font-weight: 760;
+  white-space: nowrap;
+}
+
 .account-total {
   background: rgba(255, 255, 255, 0.04);
 }
@@ -3776,7 +3784,130 @@ textarea:focus,
 }
 
 .accounts-section {
-  display: block;
+  display: grid;
+  gap: 1rem;
+}
+
+.account-company-group {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.account-company-group:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.account-company-group-header {
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 1fr) minmax(20rem, auto) 40px;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  min-height: 6.4rem;
+  padding: 1.15rem 1.25rem;
+  scroll-margin-top: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(145deg, rgba(20, 184, 166, 0.035), transparent 52%),
+    rgba(255, 255, 255, 0.76);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.account-company-group-header:hover,
+.account-company-group-header:focus-visible {
+  border-color: rgba(20, 184, 166, 0.32);
+  background:
+    linear-gradient(145deg, rgba(20, 184, 166, 0.08), transparent 54%),
+    #ffffff;
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+
+.account-company-group-header .expand-icon {
+  width: 40px;
+  height: 40px;
+  border-color: rgba(20, 184, 166, 0.3);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  box-shadow: 0 8px 18px rgba(20, 184, 166, 0.14);
+}
+
+.account-company-group-header:hover .expand-icon,
+.account-company-group-header:focus-visible .expand-icon {
+  border-color: rgba(15, 143, 131, 0.48);
+  background: #d5f6ef;
+  color: #0b766d;
+}
+
+.account-company-group-header .expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.account-company-title {
+  min-width: 0;
+}
+
+.account-company-title h3 {
+  margin: 0 0 0.2rem;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xl);
+}
+
+.account-company-title p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.account-company-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(6.5rem, auto));
+  gap: 0.75rem;
+  justify-content: end;
+}
+
+.account-company-summary div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.account-company-summary span {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.account-company-summary strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.account-company-account-list,
+.account-row-shell {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-company-account-list {
+  padding-left: 1rem;
+  animation: slideDown var(--transition-slow) ease-out;
 }
 
 .recurring-investments-card {
@@ -3982,6 +4113,8 @@ textarea:focus,
 .recurring-investments-table td:nth-child(3),
 .recurring-investments-table td:nth-child(4),
 .recurring-investments-table td:nth-child(5),
+.recurring-investments-table td:nth-child(6),
+.recurring-investments-table td:nth-child(7),
 .dividend-income-table td:nth-child(2),
 .dividend-income-table td:nth-child(3),
 .dividend-income-table td:nth-child(4),
@@ -4738,6 +4871,26 @@ textarea:focus,
   .account-header {
     align-items: stretch;
     gap: 0.85rem;
+  }
+
+  .account-company-group-header {
+    grid-template-columns: auto minmax(0, 1fr) 40px;
+  }
+
+  .account-company-summary {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .account-company-summary div {
+    padding: 0.6rem 0 0;
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
+  }
+
+  .account-company-account-list {
+    padding-left: 0;
   }
 
   .account-action-rail {

@@ -1,7 +1,5 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { forkJoin } from 'rxjs';
-import { map } from 'rxjs/operators';
 
 import {
   Account,
@@ -14,12 +12,9 @@ import {
 } from '../models/snaptrade.model';
 import { StockHistoricalData } from '../models/stock.model';
 import { SnapTradeService } from '../services/snaptrade.service';
-import { StockService } from '../services/stock.service';
 
 type ChartRange = {
   label: string;
-  interval: '1min' | '5min' | '30min' | '1d' | '1w';
-  outputSize: number;
   daysBack: number;
 };
 
@@ -232,20 +227,20 @@ type FutureProjection = {
           <div class="stock-chart-section">
             <div class="chart-topline">
               <div>
-                <span class="chart-eyebrow">Balance History</span>
-                <strong [class.positive]="chartChange >= 0" [class.negative]="chartChange < 0">
-                  {{ chartChange >= 0 ? '+' : '' }}{{ chartChange | currency:'USD':'symbol':'1.2-2' }}
-                  <span>({{ chartChangePercent >= 0 ? '+' : '' }}{{ chartChangePercent | number:'1.2-2' }}%)</span>
+                <span class="chart-eyebrow">{{ getActiveChartEyebrow() }}</span>
+                <strong [class.positive]="getActiveChartChange() >= 0" [class.negative]="getActiveChartChange() < 0">
+                  {{ getActiveChartChange() >= 0 ? '+' : '' }}{{ getActiveChartChange() | currency:'USD':'symbol':'1.2-2' }}
+                  <span>({{ getActiveChartChangePercent() >= 0 ? '+' : '' }}{{ getActiveChartChangePercent() | number:'1.2-2' }}%)</span>
                 </strong>
               </div>
-              <span class="chart-range-label">{{ selectedRange.label }}</span>
+              <span class="chart-range-label">{{ getActiveChartRangeLabel() }}</span>
             </div>
             <app-stock-chart
-              [historicalData]="balanceHistory"
-              valueLabel="Balance"
-              ariaLabel="Account balance history chart">
+              [historicalData]="getActiveChartData()"
+              [valueLabel]="showFuture ? 'Estimated Value' : 'Balance'"
+              [ariaLabel]="showFuture ? 'Estimated future account value chart' : 'Account balance history chart'">
             </app-stock-chart>
-            <div class="chart-range-tabs" role="tablist" aria-label="Account balance chart timeframe">
+            <div class="chart-range-tabs" *ngIf="!showFuture" role="tablist" aria-label="Account balance chart timeframe">
               <button
                 *ngFor="let range of chartRanges"
                 type="button"
@@ -258,7 +253,11 @@ type FutureProjection = {
                 {{ range.label }}
               </button>
             </div>
-            <div class="chart-loading" *ngIf="balanceHistoryLoading">Updating chart...</div>
+            <div class="chart-loading" *ngIf="!showFuture && balanceHistoryLoading">Updating chart...</div>
+            <div class="chart-loading" *ngIf="showFuture && (recurringLoading || dividendLoading)">Estimating future value...</div>
+            <div class="compact-empty" *ngIf="!showFuture && balanceHistoryError && !balanceHistoryLoading">
+              <p>{{ balanceHistoryError }}</p>
+            </div>
           </div>
         </section>
 
@@ -443,6 +442,8 @@ type FutureProjection = {
                     <th>Amount</th>
                     <th>Monthly</th>
                     <th>Yearly</th>
+                    <th>Allocation</th>
+                    <th>Future Allocation</th>
                     <th>
                       <div class="table-header-actions">
                         <span>Actions</span>
@@ -466,7 +467,9 @@ type FutureProjection = {
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(investment.amount) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringMonthlyAmount(investment)) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringYearlyAmount(investment)) }}</td>
-                    <td *ngIf="recurringEditingIndex === i" colspan="4">
+                    <td *ngIf="recurringEditingIndex !== i">{{ getRecurringCurrentAllocation(investment) | number:'1.2-2' }}%</td>
+                    <td *ngIf="recurringEditingIndex !== i">{{ getRecurringFutureAllocation(investment) | number:'1.2-2' }}%</td>
+                    <td *ngIf="recurringEditingIndex === i" colspan="6">
                       <div class="recurring-edit-form">
                         <select [(ngModel)]="recurringEditDraft.frequency" aria-label="Recurring buy frequency">
                           <option *ngFor="let option of recurringFrequencyOptions" [value]="option.value">{{ option.label }}</option>
@@ -571,6 +574,7 @@ type FutureProjection = {
                     <th>Avg Price</th>
                     <th>Current Price</th>
                     <th>Total Value</th>
+                    <th>Allocation</th>
                     <th>Gain/Loss</th>
                     <th>Gain/Loss %</th>
                   </tr>
@@ -585,6 +589,7 @@ type FutureProjection = {
                     <td>{{ formatMoney(holding.averagePurchasePrice) }}</td>
                     <td>{{ formatMoney(holding.currentPrice) }}</td>
                     <td>{{ formatMoney(holding.totalValue) }}</td>
+                    <td>{{ getHoldingAllocation(holding, account) | number:'1.2-2' }}%</td>
                     <td [class.positive]="holding.gainLoss >= 0" [class.negative]="holding.gainLoss < 0">
                       {{ formatMoney(holding.gainLoss, true) }}
                     </td>
@@ -597,6 +602,7 @@ type FutureProjection = {
                   <tr class="account-total">
                     <td colspan="4"><strong>Account Total</strong></td>
                     <td><strong>{{ formatMoney(getAccountTotalValue(account)) }}</strong></td>
+                    <td><strong>{{ getAccountHoldingsAllocationTotal(account) | number:'1.2-2' }}%</strong></td>
                     <td [class.positive]="getAccountTotalGainLoss(account) >= 0" [class.negative]="getAccountTotalGainLoss(account) < 0">
                       <strong>{{ formatMoney(getAccountTotalGainLoss(account), true) }}</strong>
                     </td>
@@ -695,21 +701,23 @@ export class AccountDetailComponent implements OnInit {
   };
   balanceHistory: StockHistoricalData[] = [];
   balanceHistoryLoading = false;
+  balanceHistoryError: string | null = null;
   chartChange = 0;
   chartChangePercent = 0;
   showFuture = false;
   reinvestDividends = true;
   futureMonthlyContributionOverride: number | null = null;
   chartRanges: ChartRange[] = [
-    { label: '1W', interval: '1d', outputSize: 7, daysBack: 7 },
-    { label: '1M', interval: '1d', outputSize: 30, daysBack: 30 },
-    { label: '3M', interval: '1d', outputSize: 90, daysBack: 90 },
-    { label: '1Y', interval: '1d', outputSize: 252, daysBack: 365 },
-    { label: '5Y', interval: '1w', outputSize: 260, daysBack: 365 * 5 },
-    { label: 'All', interval: '1w', outputSize: 1200, daysBack: 365 * 20 }
+    { label: '1W', daysBack: 7 },
+    { label: '1M', daysBack: 30 },
+    { label: '3M', daysBack: 90 },
+    { label: '1Y', daysBack: 365 },
+    { label: '5Y', daysBack: 365 * 5 },
+    { label: 'All', daysBack: Number.POSITIVE_INFINITY }
   ];
   selectedRange = this.chartRanges[1];
   private balanceHistoryCache = new Map<string, StockHistoricalData[]>();
+  private allBalanceHistory: StockHistoricalData[] = [];
   editingNicknameAccountId: string | null = null;
   savingAccountId: string | null = null;
   removingAccountId: string | null = null;
@@ -758,7 +766,6 @@ export class AccountDetailComponent implements OnInit {
 
   constructor(
     private snapTradeService: SnapTradeService,
-    private stockService: StockService,
     private route: ActivatedRoute,
     private router: Router
   ) {}
@@ -847,99 +854,95 @@ export class AccountDetailComponent implements OnInit {
     }
 
     this.selectedRange = range;
-    this.loadBalanceHistory();
+    this.applySelectedRange();
+    this.updateChartChange();
   }
 
   toggleFuture(): void {
     this.showFuture = !this.showFuture;
   }
 
+  getActiveChartEyebrow(): string {
+    return this.showFuture ? 'Estimated Future Value' : 'Balance History';
+  }
+
+  getActiveChartRangeLabel(): string {
+    return this.showFuture ? '20Y' : this.selectedRange.label;
+  }
+
+  getActiveChartData(): StockHistoricalData[] {
+    return this.showFuture ? this.getFutureChartData() : this.balanceHistory;
+  }
+
+  getActiveChartChange(): number {
+    return this.getChartChangeStats(this.getActiveChartData()).change;
+  }
+
+  getActiveChartChangePercent(): number {
+    return this.getChartChangeStats(this.getActiveChartData()).changePercent;
+  }
+
   loadBalanceHistory(): void {
-    if (!this.account || !this.account.holdings || this.account.holdings.length === 0) {
+    if (!this.account) {
       this.balanceHistory = [];
+      this.allBalanceHistory = [];
+      this.balanceHistoryError = null;
       this.updateChartChange();
       return;
     }
 
-    const cacheKey = `${this.account.id}_${this.selectedRange.label}_${this.selectedRange.interval}_${this.selectedRange.outputSize}`;
+    const cacheKey = this.account.id;
     const cached = this.balanceHistoryCache.get(cacheKey);
     if (cached) {
-      this.balanceHistory = cached;
+      this.allBalanceHistory = cached;
+      this.applySelectedRange();
       this.updateChartChange();
       this.balanceHistoryLoading = false;
       return;
     }
 
-    const quantitiesBySymbol = this.account.holdings.reduce((totals, holding) => {
-      const symbol = (holding.symbol || '').trim().toUpperCase();
-      if (!symbol || holding.quantity <= 0) {
-        return totals;
-      }
-      totals[symbol] = (totals[symbol] || 0) + holding.quantity;
-      return totals;
-    }, {} as { [symbol: string]: number });
-
-    const symbols = Object.keys(quantitiesBySymbol);
-    if (symbols.length === 0) {
-      this.balanceHistory = [];
-      this.updateChartChange();
-      return;
-    }
-
     this.balanceHistoryLoading = true;
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - this.selectedRange.daysBack);
-
-    forkJoin(
-      symbols.map(symbol =>
-        this.stockService.getHistoricalData(
-          symbol,
-          startDate,
-          endDate,
-          this.selectedRange.interval,
-          false,
-          this.selectedRange.outputSize
-        ).pipe(map(data => ({ symbol, data })))
-      )
-    ).subscribe({
-      next: (series) => {
-        const totalsByDate = new Map<string, number>();
-        const symbolsByDate = new Map<string, Set<string>>();
-        series.forEach(({ symbol, data }) => {
-          const quantity = quantitiesBySymbol[symbol] || 0;
-          data.forEach(point => {
-            const date = new Date(point.date);
-            const dateKey = date.toISOString().slice(0, 10);
-            totalsByDate.set(dateKey, (totalsByDate.get(dateKey) || 0) + (point.close * quantity));
-            const symbolsForDate = symbolsByDate.get(dateKey) || new Set<string>();
-            symbolsForDate.add(symbol);
-            symbolsByDate.set(dateKey, symbolsForDate);
-          });
-        });
-
-        this.balanceHistory = Array.from(totalsByDate.entries())
-          .filter(([dateKey]) => (symbolsByDate.get(dateKey)?.size || 0) === symbols.length)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([dateKey, value]) => ({
-            date: new Date(`${dateKey}T00:00:00`),
-            open: value,
-            high: value,
-            low: value,
-            close: value,
+    this.balanceHistoryError = null;
+    this.snapTradeService.getAccountSnapshots(this.account.id).subscribe({
+      next: (snapshots) => {
+        this.allBalanceHistory = (snapshots || [])
+          .map(snapshot => ({
+            date: new Date(`${snapshot.snapshotDate}T00:00:00`),
+            open: snapshot.totalBalance,
+            high: snapshot.totalBalance,
+            low: snapshot.totalBalance,
+            close: snapshot.totalBalance,
             volume: 0
-          }));
-        this.balanceHistoryCache.set(cacheKey, this.balanceHistory);
+          }))
+          .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+        this.balanceHistoryCache.set(cacheKey, this.allBalanceHistory);
+        this.applySelectedRange();
+        this.balanceHistoryError = this.allBalanceHistory.length === 0
+          ? 'No account balance snapshots yet. Refresh this account daily to build history.'
+          : null;
         this.updateChartChange();
         this.balanceHistoryLoading = false;
       },
       error: (err) => {
-        console.error('Failed to load account balance history:', err);
+        console.error('Failed to load account snapshots:', err);
         this.balanceHistory = [];
+        this.allBalanceHistory = [];
+        this.balanceHistoryError = err.error?.message || err.message || 'Failed to load account snapshots.';
         this.updateChartChange();
         this.balanceHistoryLoading = false;
       }
     });
+  }
+
+  private applySelectedRange(): void {
+    if (!Number.isFinite(this.selectedRange.daysBack)) {
+      this.balanceHistory = [...this.allBalanceHistory];
+      return;
+    }
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.selectedRange.daysBack);
+    this.balanceHistory = this.allBalanceHistory.filter(point => new Date(point.date) >= cutoff);
   }
 
   backToPortfolio(): void {
@@ -1102,6 +1105,18 @@ export class AccountDetailComponent implements OnInit {
     return account.holdings.reduce((sum, holding) => sum + holding.totalValue, 0);
   }
 
+  getHoldingAllocation(holding: Holding, account: Account): number {
+    const totalValue = this.getAccountTotalValue(account);
+    if (totalValue <= 0) {
+      return 0;
+    }
+    return (holding.totalValue / totalValue) * 100;
+  }
+
+  getAccountHoldingsAllocationTotal(account: Account): number {
+    return this.getAccountTotalValue(account) > 0 ? 100 : 0;
+  }
+
   getMarginBalance(account: Account): number {
     if (account.marginBalance !== null && account.marginBalance !== undefined) {
       return Math.max(0, account.marginBalance);
@@ -1191,9 +1206,7 @@ export class AccountDetailComponent implements OnInit {
 
     return Array.from({ length: 20 }, (_, index) => {
       const years = index + 1;
-      const value = this.reinvestDividends
-        ? this.getReinvestedFutureValue(currentValue, annualRecurringInvestment, netDividendYieldRate, years)
-        : currentValue + (annualRecurringInvestment * years);
+      const value = this.getProjectedFutureValue(currentValue, annualRecurringInvestment, netDividendYieldRate, years);
       const annualIncome = netDividendYieldRate !== 0 ? value * netDividendYieldRate : this.getAccountNetAnnualIncome();
 
       return {
@@ -1217,6 +1230,45 @@ export class AccountDetailComponent implements OnInit {
 
   private getFutureYearlyContribution(): number {
     return this.getFutureMonthlyContribution() * 12;
+  }
+
+  private getFutureChartData(): StockHistoricalData[] {
+    const currentValue = this.getFutureStartingValue();
+    const annualRecurringInvestment = this.getFutureYearlyContribution();
+    const netDividendYieldRate = this.getAccountDividendYield() / 100;
+    const today = new Date();
+
+    return Array.from({ length: 241 }, (_, index) => {
+      const years = index / 12;
+      const date = new Date(today);
+      date.setMonth(today.getMonth() + index);
+      const value = this.getProjectedFutureValue(
+        currentValue,
+        annualRecurringInvestment,
+        netDividendYieldRate,
+        years
+      );
+
+      return {
+        date,
+        open: value,
+        high: value,
+        low: value,
+        close: value,
+        volume: 0
+      };
+    });
+  }
+
+  private getProjectedFutureValue(
+    currentValue: number,
+    annualRecurringInvestment: number,
+    annualYieldRate: number,
+    years: number
+  ): number {
+    return this.reinvestDividends
+      ? this.getReinvestedFutureValue(currentValue, annualRecurringInvestment, annualYieldRate, years)
+      : currentValue + (annualRecurringInvestment * years);
   }
 
   private getReinvestedFutureValue(
@@ -1464,6 +1516,32 @@ export class AccountDetailComponent implements OnInit {
     return this.getRecurringYearlyAmount(investment) / 12;
   }
 
+  getRecurringCurrentAllocation(investment: RecurringInvestment): number {
+    if (!this.account || !this.account.holdings || this.account.holdings.length === 0) {
+      return 0;
+    }
+
+    const totalValue = this.getAccountTotalValue(this.account);
+    if (totalValue <= 0) {
+      return 0;
+    }
+
+    const symbol = (investment.symbol || '').toUpperCase();
+    const holdingValue = this.account.holdings
+      .filter(holding => (holding.symbol || '').toUpperCase() === symbol)
+      .reduce((sum, holding) => sum + holding.totalValue, 0);
+
+    return (holdingValue / totalValue) * 100;
+  }
+
+  getRecurringFutureAllocation(investment: RecurringInvestment): number {
+    const yearlyTotal = this.getRecurringYearlyTotal();
+    if (yearlyTotal <= 0) {
+      return 0;
+    }
+    return (this.getRecurringYearlyAmount(investment) / yearlyTotal) * 100;
+  }
+
   getRecurringYearlyTotal(): number {
     return this.filteredRecurringInvestments.reduce(
       (sum, investment) => sum + this.getRecurringYearlyAmount(investment),
@@ -1495,19 +1573,26 @@ export class AccountDetailComponent implements OnInit {
   }
 
   private updateChartChange(): void {
-    if (!this.balanceHistory || this.balanceHistory.length < 2) {
-      this.chartChange = 0;
-      this.chartChangePercent = 0;
-      return;
+    const stats = this.getChartChangeStats(this.balanceHistory);
+    this.chartChange = stats.change;
+    this.chartChangePercent = stats.changePercent;
+  }
+
+  private getChartChangeStats(data: StockHistoricalData[]): { change: number; changePercent: number } {
+    if (!data || data.length < 2) {
+      return { change: 0, changePercent: 0 };
     }
 
-    const sorted = [...this.balanceHistory].sort((a, b) =>
+    const sorted = [...data].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
     const firstClose = sorted[0].close;
     const lastClose = sorted[sorted.length - 1].close;
+    const change = lastClose - firstClose;
 
-    this.chartChange = lastClose - firstClose;
-    this.chartChangePercent = firstClose ? (this.chartChange / firstClose) * 100 : 0;
+    return {
+      change,
+      changePercent: firstClose ? (change / firstClose) * 100 : 0
+    };
   }
 }

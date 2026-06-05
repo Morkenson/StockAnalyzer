@@ -3,7 +3,6 @@ import { of } from 'rxjs';
 import { AccountDetailComponent } from '../../app/components/account-detail.component';
 import { DividendIncomeSummary, Portfolio, RecurringInvestment } from '../../app/models/snaptrade.model';
 import { SnapTradeService } from '../../app/services/snaptrade.service';
-import { StockService } from '../../app/services/stock.service';
 
 describe('AccountDetailComponent', () => {
   const portfolio: Portfolio = {
@@ -149,9 +148,17 @@ describe('AccountDetailComponent', () => {
     source: 'average_historical_payout_current_holdings'
   };
 
-  function createComponent(accountId = 'acc-1', stockHistoryBySymbol?: { [symbol: string]: any[] }) {
+  function createComponent(accountId = 'acc-1', accountSnapshots?: any[]) {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const defaultHistory = [
+      { snapshotDate: yesterday.toISOString().slice(0, 10), accountId: 'acc-1', totalBalance: 800, currency: 'USD' },
+      { snapshotDate: today.toISOString().slice(0, 10), accountId: 'acc-1', totalBalance: 860, currency: 'USD' }
+    ];
     const snapTradeService = {
       getPortfolio: jest.fn().mockReturnValue(of(portfolio)),
+      getAccountSnapshots: jest.fn().mockReturnValue(of(accountSnapshots || defaultHistory)),
       getRecurringInvestments: jest.fn().mockReturnValue(of(recurringInvestments)),
       updateRecurringInvestmentPreference: jest.fn((preference: any) => of({
         accountId: preference.accountId,
@@ -195,18 +202,6 @@ describe('AccountDetailComponent', () => {
       })),
       hideAccount: jest.fn().mockReturnValue(of({ accountId: 'acc-1', hidden: true }))
     };
-    const stockService = {
-      getHistoricalData: jest.fn((symbol: string) => {
-        if (stockHistoryBySymbol && stockHistoryBySymbol[symbol]) {
-          return of(stockHistoryBySymbol[symbol]);
-        }
-        const base = symbol === 'AAPL' ? 100 : 200;
-        return of([
-          { date: new Date('2026-01-01'), open: base, high: base, low: base, close: base, volume: 0 },
-          { date: new Date('2026-01-02'), open: base + 10, high: base + 10, low: base + 10, close: base + 10, volume: 0 }
-        ]);
-      })
-    };
     const route = {
       snapshot: {
         paramMap: {
@@ -217,14 +212,13 @@ describe('AccountDetailComponent', () => {
     const router = { navigate: jest.fn() };
     const component = new AccountDetailComponent(
       snapTradeService as unknown as SnapTradeService,
-      stockService as unknown as StockService,
       route as any,
       router as any
     );
 
     component.ngOnInit();
 
-    return { component, snapTradeService, stockService, router };
+    return { component, snapTradeService, router };
   }
 
   it('loads the matching account from the portfolio', () => {
@@ -243,6 +237,8 @@ describe('AccountDetailComponent', () => {
     expect(component.getAccountTotalGainLoss(component.account!)).toBe(300);
     expect(component.getAccountTotalGainLossPercent(component.account!)).toBe(37.5);
     expect(component.getPortfolioAllocation(component.account!, component.portfolio!)).toBeCloseTo(66.67, 2);
+    expect(component.getHoldingAllocation(component.account!.holdings![0], component.account!)).toBeCloseTo(54.55, 2);
+    expect(component.getAccountHoldingsAllocationTotal(component.account!)).toBe(100);
     expect(component.getLargestHolding(component.account!)?.symbol).toBe('AAPL');
   });
 
@@ -255,6 +251,8 @@ describe('AccountDetailComponent', () => {
     expect(component.getRecurringMonthlyTotal()).toBe(50);
     expect(component.getRecurringYearlyTotal()).toBe(600);
     expect(component.getRecurringDailyTotal()).toBeCloseTo(2.38, 2);
+    expect(component.getRecurringCurrentAllocation(component.filteredRecurringInvestments[0])).toBeCloseTo(54.55, 2);
+    expect(component.getRecurringFutureAllocation(component.filteredRecurringInvestments[0])).toBe(100);
     expect(component.getAccountDividendIncome()?.annualIncome).toBe(96);
     expect(component.getAccountDividendSymbols().map(item => item.symbol)).toEqual(['AAPL']);
   });
@@ -271,6 +269,26 @@ describe('AccountDetailComponent', () => {
     expect(component.getFutureProjections()).toHaveLength(20);
     expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBeCloseTo(5830.5, 2);
     expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(23.32, 2);
+  });
+
+  it('switches the account chart to estimated future value when future mode is active', () => {
+    const { component } = createComponent();
+
+    expect(component.getActiveChartEyebrow()).toBe('Balance History');
+    expect(component.getActiveChartRangeLabel()).toBe('1M');
+    expect(component.getActiveChartData().map(point => point.close)).toEqual([800, 860]);
+
+    component.toggleFuture();
+
+    const futureChartData = component.getActiveChartData();
+
+    expect(component.getActiveChartEyebrow()).toBe('Estimated Future Value');
+    expect(component.getActiveChartRangeLabel()).toBe('20Y');
+    expect(futureChartData).toHaveLength(241);
+    expect(futureChartData[0].close).toBe(2000);
+    expect(futureChartData[60].close).toBeCloseTo(5830.5, 2);
+    expect(component.getActiveChartChange()).toBeCloseTo(futureChartData[240].close - 2000, 2);
+    expect(component.getActiveChartChangePercent()).toBeGreaterThan(0);
   });
 
   it('can reinvest future dividends into projected value', () => {
@@ -417,6 +435,42 @@ describe('AccountDetailComponent', () => {
     expect(component.getRecurringYearlyTotal()).toBe(5544);
     expect(component.getRecurringMonthlyTotal()).toBe(462);
     expect(component.getRecurringDailyTotal()).toBe(22);
+    expect(component.getRecurringFutureAllocation(component.filteredRecurringInvestments[0])).toBe(100);
+  });
+
+  it('calculates future allocation from annualized recurring buys', () => {
+    const { component } = createComponent();
+    component.filteredRecurringInvestments = [
+      {
+        symbol: 'AAPL',
+        accountId: 'acc-1',
+        accountName: 'Main Investing',
+        amount: 50,
+        currency: 'USD',
+        frequency: 'monthly',
+        confidence: 0.9,
+        occurrences: 5,
+        lastDate: '2026-05-01',
+        source: 'inferred'
+      },
+      {
+        symbol: 'BNDI',
+        accountId: 'acc-1',
+        accountName: 'Main Investing',
+        amount: 25,
+        currency: 'USD',
+        frequency: 'monthly',
+        confidence: 0.9,
+        occurrences: 5,
+        lastDate: '2026-05-01',
+        source: 'inferred'
+      }
+    ];
+
+    expect(component.getRecurringFutureAllocation(component.filteredRecurringInvestments[0])).toBeCloseTo(66.67, 2);
+    expect(component.getRecurringFutureAllocation(component.filteredRecurringInvestments[1])).toBeCloseTo(33.33, 2);
+    expect(component.getRecurringCurrentAllocation(component.filteredRecurringInvestments[0])).toBeCloseTo(54.55, 2);
+    expect(component.getRecurringCurrentAllocation(component.filteredRecurringInvestments[1])).toBe(0);
   });
 
   it('edits and removes recurring buys in the account view', () => {
@@ -459,32 +513,35 @@ describe('AccountDetailComponent', () => {
     expect(component.clearingRecurringChanges).toBe(false);
   });
 
-  it('builds account balance history from current holdings', () => {
-    const { component, stockService } = createComponent();
+  it('loads account balance history from saved account snapshots', () => {
+    const { component, snapTradeService } = createComponent();
 
     expect(component.chartRanges.map(range => range.label)).toEqual(['1W', '1M', '3M', '1Y', '5Y', 'All']);
     expect(component.selectedRange.label).toBe('1M');
-    expect(stockService.getHistoricalData).toHaveBeenCalledWith('AAPL', expect.any(Date), expect.any(Date), '1d', false, 30);
-    expect(stockService.getHistoricalData).toHaveBeenCalledWith('MSFT', expect.any(Date), expect.any(Date), '1d', false, 30);
+    expect(snapTradeService.getAccountSnapshots).toHaveBeenCalledWith('acc-1');
     expect(component.balanceHistory.map(point => point.close)).toEqual([800, 860]);
     expect(component.chartChange).toBe(60);
     expect(component.chartChangePercent).toBe(7.5);
   });
 
-  it('excludes account balance dates with incomplete holding price data', () => {
-    const { component } = createComponent('acc-1', {
-      AAPL: [
-        { date: new Date('2026-01-01'), open: 100, high: 100, low: 100, close: 100, volume: 0 },
-        { date: new Date('2026-01-02'), open: 110, high: 110, low: 110, close: 110, volume: 0 }
-      ],
-      MSFT: [
-        { date: new Date('2026-01-02'), open: 210, high: 210, low: 210, close: 210, volume: 0 }
-      ]
-    });
+  it('filters loaded account balance history by the selected range', () => {
+    const today = new Date();
+    const stale = new Date();
+    stale.setDate(today.getDate() - 45);
+    const { component, snapTradeService } = createComponent('acc-1', [
+      { snapshotDate: stale.toISOString().slice(0, 10), accountId: 'acc-1', totalBalance: 700, currency: 'USD' },
+      { snapshotDate: today.toISOString().slice(0, 10), accountId: 'acc-1', totalBalance: 860, currency: 'USD' }
+    ]);
 
     expect(component.balanceHistory.map(point => point.close)).toEqual([860]);
     expect(component.chartChange).toBe(0);
     expect(component.chartChangePercent).toBe(0);
+
+    component.selectRange(component.chartRanges.find(range => range.label === 'All')!);
+
+    expect(snapTradeService.getAccountSnapshots).toHaveBeenCalledTimes(1);
+    expect(component.balanceHistory.map(point => point.close)).toEqual([700, 860]);
+    expect(component.chartChange).toBe(160);
   });
 
   it('navigates to stock detail when a holding symbol is selected', () => {
