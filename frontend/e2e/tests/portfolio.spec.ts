@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/auth.fixture';
+import type { Page } from '@playwright/test';
 
 const MOCK_ACCOUNT = {
   id: 'acc-test-id',
@@ -26,6 +27,10 @@ const MOCK_PORTFOLIO_WITH_ACCOUNT = {
   ...MOCK_PORTFOLIO_EMPTY,
   accounts: [MOCK_ACCOUNT],
 };
+
+async function expandRobinhoodAccounts(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /Robinhood.*1 account/ }).click();
+}
 
 test.describe('Portfolio', () => {
   test.beforeEach(async ({ authenticatedPage }) => {
@@ -101,9 +106,11 @@ test.describe('Portfolio', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: MOCK_PORTFOLIO_WITH_ACCOUNT }) })
     );
     await page.goto('/portfolio');
-    // Use .account-info h3 to avoid matching other headings on the page
+    await expect(page.getByRole('heading', { level: 3, name: 'Robinhood' })).toBeVisible();
+    await expandRobinhoodAccounts(page);
+    // Use .account-info h3 to avoid matching the company group heading on the page.
     await expect(page.locator('.account-info h3').filter({ hasText: 'Robinhood' })).toBeVisible();
-    // Target the actual <button> element by aria-label — the parent div also has role="button" causing strict mode violations
+    // Target the actual button element by aria-label because the parent div also has role="button".
     await expect(page.locator('button[aria-label="Rename account"]')).toBeVisible();
     await expect(page.locator('button[aria-label="Remove account"]')).toBeVisible();
   });
@@ -113,6 +120,7 @@ test.describe('Portfolio', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: MOCK_PORTFOLIO_WITH_ACCOUNT }) })
     );
     await page.goto('/portfolio');
+    await expandRobinhoodAccounts(page);
     await page.locator('button[aria-label="Rename account"]').click();
     await expect(page.locator('input[placeholder="Robinhood"]')).toBeVisible();
     await expect(page.locator('.account-preferences').getByRole('button', { name: 'Save' })).toBeVisible();
@@ -128,6 +136,7 @@ test.describe('Portfolio', () => {
     );
     page.on('dialog', (dialog) => dialog.accept());
     await page.goto('/portfolio');
+    await expandRobinhoodAccounts(page);
 
     const deleteResp = page.waitForResponse(
       (resp) => resp.url().includes('/snaptrade/accounts') && resp.request().method() === 'DELETE'

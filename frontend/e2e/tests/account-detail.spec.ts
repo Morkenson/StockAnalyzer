@@ -33,7 +33,10 @@ test.describe('Account Detail', () => {
     await authenticatedPage.route('**/api/snaptrade/portfolio', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: MOCK_PORTFOLIO }) })
     );
-    // Holdings is empty so loadBalanceHistory returns early — no stock/historical calls needed
+    await authenticatedPage.route('**/api/snaptrade/accounts/*/snapshots', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
+    // Account snapshots are mocked above so balance history cannot fall through to a real API.
     await authenticatedPage.route('**/api/snaptrade/recurring-investments', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
     );
