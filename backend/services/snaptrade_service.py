@@ -170,6 +170,24 @@ async def _call_snaptrade(operation):
         raise SnapTradeServiceError(_snaptrade_error_message(exc), status_code=status) from exc
 
 
+async def _call_snaptrade_sync(operation):
+    """Run a *synchronous* SnapTrade SDK call in a worker thread.
+
+    The SDK's async (``a*``) methods build an aiohttp ``ClientResponse`` but route
+    trade-order responses through the urllib3-only deserializer, which blows up with
+    ``'ClientResponse' object has no attribute 'supports_chunked_reads'``. The sync
+    methods use urllib3 end-to-end, so we use them for trading and wrap them in a
+    thread to avoid blocking the event loop.
+    """
+    try:
+        return await asyncio.to_thread(operation)
+    except snaptrade_exceptions.ApiException as exc:
+        status = _snaptrade_error_status(exc)
+        body = _snaptrade_error_body(exc)
+        logger.warning("SnapTrade API exception status=%s body=%s", status, _redacted(body))
+        raise SnapTradeServiceError(_snaptrade_error_message(exc), status_code=status) from exc
+
+
 async def create_user(user_id: str) -> SnapTradeUser:
     result = _sdk_body(
         await _call_snaptrade(
@@ -971,13 +989,12 @@ async def _resolve_universal_symbol_id(
 ) -> str:
     """Resolve a ticker (e.g. "AAPL") to SnapTrade's universal_symbol_id for the account."""
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().reference_data.asymbol_search_user_account(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().reference_data.symbol_search_user_account(
                 account_id=account_id,
                 user_id=user_id,
                 user_secret=user_secret,
                 substring=symbol,
-                skip_deserialization=True,
             )
         )
     )
@@ -1068,8 +1085,8 @@ async def check_order_impact(
     if not sdk_tif:
         raise SnapTradeServiceError(f"Unsupported time in force '{time_in_force}'")
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().trading.aget_order_impact(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().trading.get_order_impact(
                 account_id=account_id,
                 action=action.upper(),
                 universal_symbol_id=universal_symbol_id,
@@ -1081,7 +1098,6 @@ async def check_order_impact(
                 stop=stop_price,
                 units=units,
                 notional_value=notional_value,
-                skip_deserialization=True,
             )
         )
     )
@@ -1120,13 +1136,12 @@ async def place_checked_order(
         logger.info("TRADING_MODE != live; skipping real order placement for account %s", account_id)
         return _simulated_execution(account_id)
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().trading.aplace_order(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().trading.place_order(
                 trade_id=trade_id,
                 user_id=user_id,
                 user_secret=user_secret,
                 wait_to_confirm=True,
-                skip_deserialization=True,
             )
         )
     )
@@ -1176,13 +1191,12 @@ async def cancel_order(
     user_id: str, user_secret: str, account_id: str, brokerage_order_id: str
 ) -> TradeExecution:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().trading.acancel_user_account_order(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().trading.cancel_user_account_order(
                 account_id=account_id,
                 user_id=user_id,
                 user_secret=user_secret,
                 brokerage_order_id=brokerage_order_id,
-                skip_deserialization=True,
             )
         )
     )
