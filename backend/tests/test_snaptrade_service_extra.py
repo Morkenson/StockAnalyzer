@@ -70,7 +70,12 @@ async def test_get_brokerages_maps_response(monkeypatch):
         async def alist_all_brokerages(self, skip_deserialization=None):
             assert skip_deserialization is False
             return FakeResponse(
-                {"brokerages": [{"id": "b1", "name": "Broker", "displayName": "Brokerage", "supportsOAuth": True}]}
+                {
+                    "brokerages": [
+                        {"id": "b1", "name": "Broker", "displayName": "Brokerage", "supportsOAuth": True, "allows_trading": True},
+                        {"id": "b2", "name": "Readonly", "displayName": "Read Only", "supportsOAuth": True},
+                    ]
+                }
             )
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"reference_data": ReferenceData()})())
@@ -79,6 +84,8 @@ async def test_get_brokerages_maps_response(monkeypatch):
 
     assert brokerages[0].display_name == "Brokerage"
     assert brokerages[0].supports_oauth is True
+    assert brokerages[0].supports_trading is True
+    assert brokerages[1].supports_trading is False
 
 
 @pytest.mark.asyncio
@@ -90,6 +97,7 @@ async def test_initiate_connection_returns_login_link(monkeypatch):
             custom_redirect=None,
             immediate_redirect=None,
             show_close_button=None,
+            connection_type=None,
             connection_portal_version=None,
             skip_deserialization=None,
         ):
@@ -97,6 +105,7 @@ async def test_initiate_connection_returns_login_link(monkeypatch):
             assert custom_redirect == "https://app"
             assert immediate_redirect is True
             assert show_close_button is False
+            assert connection_type == "read"
             assert connection_portal_version == "v4"
             assert skip_deserialization is True
             return FakeResponse({"redirectURI": "https://login.example"})
@@ -764,3 +773,144 @@ async def test_get_dividend_income_returns_empty_without_current_holdings(monkey
     assert summary.totals == []
     assert summary.symbols == []
     assert calls["activities"] == 0
+
+
+def _trading_client(reference_data=None, trading=None):
+    attrs = {}
+    if reference_data is not None:
+        attrs["reference_data"] = reference_data
+    if trading is not None:
+        attrs["trading"] = trading
+    return type("Client", (), attrs)()
+
+
+@pytest.mark.asyncio
+async def test_check_order_impact_resolves_symbol_and_maps_enums(monkeypatch):
+    captured = {}
+
+    class ReferenceData:
+        async def asymbol_search_user_account(self, account_id=None, user_id=None, user_secret=None, substring=None, skip_deserialization=None):
+            assert (account_id, user_id, user_secret, substring) == ("acc", "u", "s", "AAPL")
+            return FakeResponse([{"id": "usym-1", "symbol": "AAPL"}])
+
+    class Trading:
+        async def aget_order_impact(self, **kwargs):
+            captured.update(kwargs)
+            return FakeResponse(
+                {
+                    "trade": {"id": "trade-1", "action": "BUY", "units": 2, "price": 150, "order_type": "Limit"},
+                    "estimated_commissions": 0.0,
+                    "combined_remaining_balance": {"currency": "USD", "cash": 500},
+                }
+            )
+
+    monkeypatch.setattr(svc, "_sdk_client", lambda: _trading_client(ReferenceData(), Trading()))
+
+    impact = await svc.check_order_impact(
+        "u", "s", "acc", "buy", "AAPL", order_type="LIMIT", time_in_force="GTC", units=2, limit_price=150
+    )
+
+    assert captured["universal_symbol_id"] == "usym-1"
+    assert captured["order_type"] == "Limit"
+    assert captured["time_in_force"] == "GTC"
+    assert captured["action"] == "BUY"
+    assert impact.trade_id == "trade-1"
+    assert impact.remaining_cash == 500
+    assert impact.currency == "USD"
+
+
+@pytest.mark.asyncio
+async def test_check_order_impact_rejects_unknown_symbol(monkeypatch):
+    class ReferenceData:
+        async def asymbol_search_user_account(self, **kwargs):
+            return FakeResponse([])
+
+    monkeypatch.setattr(svc, "_sdk_client", lambda: _trading_client(ReferenceData(), object()))
+
+    with pytest.raises(svc.SnapTradeServiceError) as ex:
+        await svc.check_order_impact("u", "s", "acc", "BUY", "ZZZZ", units=1)
+    assert ex.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_place_checked_order_maps_execution(monkeypatch):
+    class Trading:
+        async def aplace_order(self, trade_id=None, user_id=None, user_secret=None, wait_to_confirm=None, skip_deserialization=None):
+            assert (trade_id, user_id, user_secret, wait_to_confirm) == ("trade-1", "u", "s", True)
+            return FakeResponse(
+                {"brokerage_order_id": "ord-9", "symbol": "AAPL", "action": "BUY", "status": "EXECUTED", "total_quantity": 2}
+            )
+
+    monkeypatch.setattr(svc, "TRADING_LIVE", True)
+    monkeypatch.setattr(svc, "_sdk_client", lambda: _trading_client(trading=Trading()))
+
+    execution = await svc.place_checked_order("u", "s", "acc", "trade-1")
+
+    assert execution.brokerage_order_id == "ord-9"
+    assert execution.account_id == "acc"
+    assert execution.status == "EXECUTED"
+    assert execution.units == 2
+
+
+@pytest.mark.asyncio
+async def test_place_order_runs_impact_then_place_and_clears_cache(monkeypatch):
+    calls = []
+
+    async def fake_impact(*args, **kwargs):
+        calls.append("impact")
+        from models.snaptrade_models import TradeImpact
+        return TradeImpact(trade_id="t-1", symbol="AAPL")
+
+    async def fake_place(user_id, user_secret, account_id, trade_id):
+        calls.append("place")
+        assert trade_id == "t-1"
+        from models.snaptrade_models import TradeExecution
+        return TradeExecution(brokerage_order_id="o-1", account_id=account_id, status="EXECUTED")
+
+    cleared = []
+    monkeypatch.setattr(svc, "TRADING_LIVE", True)
+    monkeypatch.setattr(svc, "check_order_impact", fake_impact)
+    monkeypatch.setattr(svc, "place_checked_order", fake_place)
+    monkeypatch.setattr(svc, "clear_user_cache", lambda uid: cleared.append(uid))
+
+    execution = await svc.place_order("u", "s", "acc", "BUY", "AAPL", units=1)
+
+    assert calls == ["impact", "place"]
+    assert execution.symbol == "AAPL"
+    assert cleared == ["u"]
+
+
+@pytest.mark.asyncio
+async def test_place_order_simulates_when_not_live(monkeypatch):
+    """In test mode (default) no real order is placed and no SDK call is made."""
+    monkeypatch.setattr(svc, "TRADING_LIVE", False)
+
+    def _fail():
+        raise AssertionError("SDK client must not be used in test mode")
+
+    monkeypatch.setattr(svc, "_sdk_client", _fail)
+
+    execution = await svc.place_order("u", "s", "acc", "BUY", "AAPL", units=3)
+
+    assert execution.status == "SIMULATED (test mode)"
+    assert execution.symbol == "AAPL"
+    assert execution.units == 3
+    assert execution.brokerage_order_id == ""
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_clears_cache(monkeypatch):
+    cleared = []
+
+    class Trading:
+        async def acancel_user_account_order(self, account_id=None, user_id=None, user_secret=None, brokerage_order_id=None, skip_deserialization=None):
+            assert (account_id, brokerage_order_id) == ("acc", "ord-9")
+            return FakeResponse({"brokerage_order_id": "ord-9", "status": "CANCELLED"})
+
+    monkeypatch.setattr(svc, "_sdk_client", lambda: _trading_client(trading=Trading()))
+    monkeypatch.setattr(svc, "clear_user_cache", lambda uid: cleared.append(uid))
+
+    execution = await svc.cancel_order("u", "s", "acc", "ord-9")
+
+    assert execution.status == "CANCELLED"
+    assert cleared == ["u"]

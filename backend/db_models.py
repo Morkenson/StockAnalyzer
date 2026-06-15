@@ -86,6 +86,80 @@ class Loan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class ExternalApiUsage(Base):
+    """Monthly request counters for rate-limited external APIs (e.g. RentCast)."""
+    __tablename__ = "external_api_usage"
+
+    provider: Mapped[str] = mapped_column(String(40), primary_key=True)
+    period_start: Mapped[date] = mapped_column(Date, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class RentcastListingCache(Base):
+    """Cached RentCast listing responses keyed by the query that produced them,
+    so repeat searches reuse a prior paid API call instead of spending quota."""
+    __tablename__ = "rentcast_listing_cache"
+
+    provider: Mapped[str] = mapped_column(String(40), primary_key=True)
+    cache_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class RealEstateProperty(Base):
+    __tablename__ = "real_estate_properties"
+
+    id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(APP_DATA_USER_ID, index=True)
+    name: Mapped[str] = mapped_column(NAME)
+    address: Mapped[str | None] = mapped_column(NAME)
+    city: Mapped[str | None] = mapped_column(String(120))
+    country: Mapped[str | None] = mapped_column(String(120))
+    property_type: Mapped[str | None] = mapped_column(String(80))
+    currency: Mapped[str] = mapped_column(CURRENCY, default="USD")
+    purchase_price: Mapped[float] = mapped_column(MONEY)
+    down_payment_pct: Mapped[float] = mapped_column(Numeric(5, 2))
+    closing_costs: Mapped[float] = mapped_column(MONEY, default=0)
+    interest_rate: Mapped[float] = mapped_column(Numeric(5, 2))
+    loan_term_years: Mapped[int] = mapped_column(Integer)
+    monthly_rent: Mapped[float] = mapped_column(MONEY)
+    vacancy_rate_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    property_tax_annual: Mapped[float] = mapped_column(MONEY, default=0)
+    insurance_annual: Mapped[float] = mapped_column(MONEY, default=0)
+    hoa_monthly: Mapped[float] = mapped_column(MONEY, default=0)
+    maintenance_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    management_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    other_monthly_costs: Mapped[float] = mapped_column(MONEY, default=0)
+    appreciation_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    hold_years: Mapped[int] = mapped_column(Integer, default=10)
+    monthly_cash_flow: Mapped[float] = mapped_column(MONEY)
+    cap_rate: Mapped[float] = mapped_column(Numeric(8, 4))
+    cash_on_cash_return: Mapped[float] = mapped_column(Numeric(8, 4))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class TaxProfile(Base):
+    __tablename__ = "tax_profiles"
+
+    id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(APP_DATA_USER_ID, unique=True, index=True)
+    tax_year: Mapped[int] = mapped_column(Integer, default=2025)
+    filing_status: Mapped[str] = mapped_column(String(32), default="single")
+    gross_income: Mapped[float] = mapped_column(MONEY, default=0)
+    pre_tax_contributions: Mapped[float] = mapped_column(MONEY, default=0)
+    use_itemized: Mapped[bool] = mapped_column(Boolean, default=False)
+    itemized_deduction: Mapped[float] = mapped_column(MONEY, default=0)
+    withholdings_paid: Mapped[float] = mapped_column(MONEY, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class Asset(Base):
     __tablename__ = "assets"
 
@@ -185,6 +259,29 @@ class SnapTradeRecurringInvestmentPreference(Base):
     amount: Mapped[float | None] = mapped_column(MONEY)
     frequency: Mapped[str | None] = mapped_column(String(32))
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SnapTradeRecurringBuySchedule(Base):
+    """App-scheduled recurring buy orders, executed automatically via the trading API."""
+
+    __tablename__ = "snaptrade_recurring_buy_schedules"
+
+    id: Mapped[str] = mapped_column(ROW_ID, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(EXTERNAL_ID, index=True)
+    account_id: Mapped[str] = mapped_column(EXTERNAL_ID)
+    symbol: Mapped[str] = mapped_column(String(32))
+    # Fixed-share mode uses units; dollar-cost mode uses target_amount + accumulated_budget.
+    units: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    target_amount: Mapped[float | None] = mapped_column(MONEY)
+    accumulated_budget: Mapped[float] = mapped_column(MONEY, default=0, server_default="0")
+    frequency: Mapped[str] = mapped_column(String(16))
+    next_run_date: Mapped[date] = mapped_column(Date, index=True)
+    last_run_date: Mapped[date | None] = mapped_column(Date)
+    last_status: Mapped[str | None] = mapped_column(String(255))
+    last_order_id: Mapped[str | None] = mapped_column(String(128))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

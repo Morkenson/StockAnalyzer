@@ -9,12 +9,18 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
+import { environment } from '../../environments/environment';
 
 @Injectable()
 export class AuthInterceptor implements HttpInterceptor {
   constructor(private injector: Injector) {}
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    // Credentials are only ever attached to requests for our own API so the
+    // bearer token can never leak to a third-party origin.
+    if (!req.url.startsWith(environment.api.baseUrl)) {
+      return next.handle(req);
+    }
     // Token is read from storage directly (not via AuthService) to avoid a
     // circular dependency during AuthService construction, which itself issues
     // the initial /auth/me request through this interceptor.

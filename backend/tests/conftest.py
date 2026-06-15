@@ -12,6 +12,8 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{_test_db.as_posix()}")
 os.environ.setdefault("PLAID_TOKEN_ENCRYPTION_KEY", "test-plaid-token-encryption-key")
 os.environ.setdefault("SNAPTRADE_SECRET_ENCRYPTION_KEY", "test-snaptrade-secret-encryption-key")
 os.environ.setdefault("DEBUG_EXPOSE_RESET_TOKEN", "1")
+# Never let a real RentCast key from .env leak into tests — live calls cost quota
+os.environ["RENTCAST_API_KEY"] = ""
 
 # Ensure backend root is on path when running pytest from backend/ or project root
 if str(_backend_dir) not in sys.path:
@@ -52,12 +54,17 @@ def clear_user_secrets():
             db_models.SigninOtp,
             db_models.Loan,
             db_models.Asset,
+            db_models.RealEstateProperty,
+            db_models.TaxProfile,
+            db_models.ExternalApiUsage,
+            db_models.RentcastListingCache,
             db_models.WatchlistItem,
             db_models.Watchlist,
             db_models.SnapTradeUserSecret,
             db_models.SnapTradeAccountPreference,
             db_models.SnapTradeDividendPreference,
             db_models.SnapTradeRecurringInvestmentPreference,
+            db_models.SnapTradeRecurringBuySchedule,
             db_models.SnapTradeAccountBalanceSnapshot,
             db_models.SnapTradePortfolioBalanceSnapshot,
             db_models.AppUser,

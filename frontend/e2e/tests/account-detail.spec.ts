@@ -40,6 +40,9 @@ test.describe('Account Detail', () => {
     await authenticatedPage.route('**/api/snaptrade/recurring-investments', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
     );
+    await authenticatedPage.route('**/api/snaptrade/recurring-buys', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) })
+    );
     await authenticatedPage.route('**/api/snaptrade/dividend-income', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { accounts: [], symbols: [], totals: [] } }) })
     );
@@ -105,5 +108,115 @@ test.describe('Account Detail', () => {
     );
     await page.getByRole('button', { name: 'Remove' }).click();
     await deleteResp;
+  });
+
+  test('hides recurring-buy setup for a read-only brokerage', async ({ authenticatedPage: page }) => {
+    await page.goto('/portfolio/accounts/acc-test-id');
+    await page.locator('.recurring-card-header').click();
+    await expect(page.locator('#account-recurring-section')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Set up recurring buy/ })).toHaveCount(0);
+    await expect(page.getByText("doesn't support placing trades")).toBeVisible();
+  });
+});
+
+const TRADE_ACCOUNT = {
+  id: 'acc-trade-id',
+  name: 'Webull',
+  nickname: null,
+  accountNumber: '****9999',
+  type: 'INDIVIDUAL',
+  currency: 'USD',
+  brokerageId: 'WEBULL',
+  balance: 5_000.0,
+  holdings: [],
+  marginBalance: null,
+  marginInterestRate: null,
+  supportsTrading: true,
+};
+
+const TRADE_PORTFOLIO = {
+  totalBalance: 5_000.0,
+  totalGainLoss: 0,
+  totalGainLossPercent: 0,
+  accounts: [TRADE_ACCOUNT],
+  holdings: [],
+};
+
+const fulfillJson = (route: import('@playwright/test').Route, data: unknown) =>
+  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
+
+test.describe('Account Detail — recurring buys (trade-enabled)', () => {
+  test.beforeEach(async ({ authenticatedPage }) => {
+    await authenticatedPage.route('**/api/watchlists', (route) => fulfillJson(route, []));
+    await authenticatedPage.route('**/api/watchlists/*/items', (route) => fulfillJson(route, []));
+    await authenticatedPage.route('**/api/snaptrade/portfolio', (route) => fulfillJson(route, TRADE_PORTFOLIO));
+    await authenticatedPage.route('**/api/snaptrade/accounts/*/snapshots', (route) => fulfillJson(route, []));
+    await authenticatedPage.route('**/api/snaptrade/recurring-investments', (route) => fulfillJson(route, []));
+    await authenticatedPage.route('**/api/snaptrade/dividend-income', (route) =>
+      fulfillJson(route, { accounts: [], symbols: [], totals: [] })
+    );
+    // GET lists schedules; POST creates one — same URL, branch on method.
+    await authenticatedPage.route('**/api/snaptrade/recurring-buys', (route) => {
+      if (route.request().method() === 'POST') {
+        const body = JSON.parse(route.request().postData() || '{}');
+        return fulfillJson(route, {
+          id: 'rb-new',
+          accountId: body.accountId,
+          symbol: body.symbol,
+          units: body.units ?? null,
+          targetAmount: body.targetAmount ?? null,
+          accumulatedBudget: 0,
+          frequency: body.frequency,
+          nextRunDate: '2026-06-15',
+          lastRunDate: null,
+          lastStatus: null,
+          lastOrderId: null,
+          active: true,
+        });
+      }
+      return fulfillJson(route, []);
+    });
+    // Stock search + quotes use query strings, so match with regex.
+    await authenticatedPage.route(/\/api\/stock\/search/, (route) =>
+      fulfillJson(route, [{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', type: 'stock' }])
+    );
+    await authenticatedPage.route(/\/api\/stock\/quotes/, (route) =>
+      fulfillJson(route, [{ symbol: 'AAPL', price: 150, change: 0, changePercent: 0, volume: 0, timestamp: new Date().toISOString() }])
+    );
+  });
+
+  test('shows the Set up recurring buy button for a trade-enabled brokerage', async ({ authenticatedPage: page }) => {
+    await page.goto('/portfolio/accounts/acc-trade-id');
+    await page.locator('.recurring-card-header').click();
+    await expect(page.getByRole('button', { name: /Set up recurring buy/ })).toBeVisible();
+  });
+
+  test('opens the recurring buy modal', async ({ authenticatedPage: page }) => {
+    await page.goto('/portfolio/accounts/acc-trade-id');
+    await page.locator('.recurring-card-header').click();
+    await page.getByRole('button', { name: /Set up recurring buy/ }).click();
+    await expect(page.getByRole('heading', { name: 'Set up recurring buy' })).toBeVisible();
+    // Dollar mode toggle reveals the dollar target input.
+    await page.getByRole('button', { name: 'Dollar amount' }).click();
+    await expect(page.getByLabel('Dollar target per buy')).toBeVisible();
+  });
+
+  test('creates a recurring buy after searching and selecting a stock', async ({ authenticatedPage: page }) => {
+    await page.goto('/portfolio/accounts/acc-trade-id');
+    await page.locator('.recurring-card-header').click();
+    await page.getByRole('button', { name: /Set up recurring buy/ }).click();
+
+    await page.getByLabel('Search for a stock').fill('AAPL');
+    await page.locator('.symbol-search-result').filter({ hasText: 'AAPL' }).first().click();
+    await expect(page.locator('.symbol-selected')).toContainText('AAPL');
+
+    const createResp = page.waitForResponse(
+      (resp) => resp.url().includes('/snaptrade/recurring-buys') && resp.request().method() === 'POST'
+    );
+    await page.getByRole('button', { name: 'Create recurring buy' }).click();
+    await createResp;
+
+    await expect(page.getByRole('heading', { name: 'Set up recurring buy' })).toBeHidden();
+    await expect(page.getByRole('cell', { name: 'AAPL' }).first()).toBeVisible();
   });
 });

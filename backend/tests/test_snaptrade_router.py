@@ -135,7 +135,9 @@ class TestInitiateConnection:
         assert resp.status_code == 200
         assert resp.json()["data"]["redirectUri"] == "https://login.example"
         store_secret.assert_awaited_once_with("user1", "real-secret")
-        initiate.assert_awaited_once_with("user1", "real-secret", "http://localhost:4200/portfolio")
+        initiate.assert_awaited_once_with(
+            "user1", "real-secret", "http://localhost:4200/portfolio", connection_type="read"
+        )
 
     def test_rejects_missing_user_secret_from_snaptrade(self):
         with patch("routers.snaptrade.user_svc.get_user_secret", new=AsyncMock(return_value=None)):

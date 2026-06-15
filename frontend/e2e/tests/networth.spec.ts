@@ -118,7 +118,8 @@ test.describe('Net Worth', () => {
     );
     await page.goto('/networth');
     await expect(page.locator('.loan-item').filter({ hasText: 'My House' })).toBeVisible();
-    await expect(page.getByText('Real Estate')).toBeVisible();
+    // Scope to the asset card — the header nav also contains a "Real Estate" link
+    await expect(page.locator('.loan-item').getByText('Real Estate')).toBeVisible();
   });
 
   test('Delete button removes an asset', async ({ authenticatedPage: page }) => {

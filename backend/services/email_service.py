@@ -8,6 +8,11 @@ logger = logging.getLogger(__name__)
 _FROM_EMAIL = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
 
 
+def _console_fallback_allowed() -> bool:
+    """OTP codes and reset links may only be written to logs outside production."""
+    return (os.getenv("APP_ENV") or "").lower() != "production"
+
+
 def _send_otp_sync(api_key: str, to_email: str, code: str) -> None:
     import resend
 
@@ -38,14 +43,18 @@ def _send_otp_sync(api_key: str, to_email: str, code: str) -> None:
 async def send_otp_email(to_email: str, code: str) -> None:
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
-        logger.warning("[DEV] OTP for %s: %s", to_email, code)
+        if _console_fallback_allowed():
+            logger.warning("[DEV] OTP for %s: %s", to_email, code)
+        else:
+            logger.error("RESEND_API_KEY is not set — OTP email to %s was not delivered", to_email)
         return
     try:
         await asyncio.to_thread(_send_otp_sync, api_key, to_email, code)
         logger.info("OTP email sent to %s", to_email)
     except Exception:
-        logger.exception("Failed to send OTP email to %s — falling back to console", to_email)
-        logger.warning("[FALLBACK] OTP for %s: %s", to_email, code)
+        logger.exception("Failed to send OTP email to %s", to_email)
+        if _console_fallback_allowed():
+            logger.warning("[FALLBACK] OTP for %s: %s", to_email, code)
 
 
 def _send_password_reset_sync(api_key: str, to_email: str, reset_link: str) -> None:
@@ -80,11 +89,15 @@ def _send_password_reset_sync(api_key: str, to_email: str, reset_link: str) -> N
 async def send_password_reset_email(to_email: str, reset_link: str) -> None:
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
-        logger.warning("[DEV] Password reset link for %s: %s", to_email, reset_link)
+        if _console_fallback_allowed():
+            logger.warning("[DEV] Password reset link for %s: %s", to_email, reset_link)
+        else:
+            logger.error("RESEND_API_KEY is not set — password reset email to %s was not delivered", to_email)
         return
     try:
         await asyncio.to_thread(_send_password_reset_sync, api_key, to_email, reset_link)
         logger.info("Password reset email sent to %s", to_email)
     except Exception:
-        logger.exception("Failed to send password reset email to %s — falling back to console", to_email)
-        logger.warning("[FALLBACK] Password reset link for %s: %s", to_email, reset_link)
+        logger.exception("Failed to send password reset email to %s", to_email)
+        if _console_fallback_allowed():
+            logger.warning("[FALLBACK] Password reset link for %s: %s", to_email, reset_link)

@@ -14,6 +14,8 @@ import { NetWorthComponent } from './components/net-worth.component';
 import { IncomeExpensesComponent } from './components/income-expenses.component';
 import { SettingsComponent } from './components/settings.component';
 import { DebtCalculatorComponent } from './components/debt-calculator.component';
+import { RealEstateComponent } from './components/real-estate.component';
+import { TaxesComponent } from './components/taxes.component';
 import { AuthGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -29,12 +31,14 @@ export const routes: Routes = [
   { path: 'portfolio/accounts/:accountId', component: AccountDetailComponent, canActivate: [AuthGuard] },
   { path: 'portfolio', component: PortfolioComponent, canActivate: [AuthGuard] },
   { path: 'income-expenses', component: IncomeExpensesComponent, canActivate: [AuthGuard] },
+  { path: 'taxes', component: TaxesComponent, canActivate: [AuthGuard] },
   { path: 'income', redirectTo: '/income-expenses', pathMatch: 'full' },
   { path: 'expenses', redirectTo: '/income-expenses', pathMatch: 'full' },
   { path: 'income-enpensises', redirectTo: '/income-expenses', pathMatch: 'full' },
   { path: 'networth/debt', component: DebtCalculatorComponent, canActivate: [AuthGuard] },
   { path: 'debt-calculator', redirectTo: '/networth/debt', pathMatch: 'full' },
   { path: 'networth', component: NetWorthComponent, canActivate: [AuthGuard] },
+  { path: 'real-estate', component: RealEstateComponent, canActivate: [AuthGuard] },
   { path: 'assets', redirectTo: '/networth', pathMatch: 'full' },
   { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard] },
   { path: '**', redirectTo: '/dashboard' }

@@ -6,7 +6,9 @@ const PROTECTED_ROUTES = [
   '/watchlist',
   '/portfolio',
   '/networth',
+  '/real-estate',
   '/income-expenses',
+  '/taxes',
   '/settings',
 ];
 
@@ -75,7 +77,9 @@ test.describe('Navigation header', () => {
     await expect(page.getByRole('link', { name: 'Watchlist' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Portfolio' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Net Worth' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Real Estate' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Income' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Taxes' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
   });
 

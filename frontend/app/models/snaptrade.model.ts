@@ -9,7 +9,36 @@ export interface Account {
   marginBalance?: number | null;
   marginInterestRate?: number | null;
   currency: string;
+  supportsTrading?: boolean;
   holdings?: Holding[];
+}
+
+export interface TradeExecution {
+  brokerageOrderId: string;
+  accountId: string;
+  symbol: string;
+  action: string;
+  units?: number | null;
+  price?: number | null;
+  orderType: string;
+  timeInForce: string;
+  status: string;
+  placedAt?: string | null;
+}
+
+export interface RecurringBuySchedule {
+  id: string;
+  accountId: string;
+  symbol: string;
+  units?: number | null;
+  targetAmount?: number | null;
+  accumulatedBudget?: number;
+  frequency: string;
+  nextRunDate?: string | null;
+  lastRunDate?: string | null;
+  lastStatus?: string | null;
+  lastOrderId?: string | null;
+  active: boolean;
 }
 
 export interface Holding {

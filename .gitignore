@@ -149,6 +149,7 @@ project.nuget.cache
 # ============================================
 # IDEs and Editors
 # ============================================
+.claude/
 .idea/
 .project
 .classpath

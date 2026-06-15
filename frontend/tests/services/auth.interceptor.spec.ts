@@ -56,6 +56,25 @@ describe('AuthInterceptor', () => {
     interceptor.intercept(request, next).subscribe(() => done());
   });
 
+  it('never attaches the token or credentials to third-party origins', done => {
+    localStorage.setItem('stock_analyzer_token', 'jwt-token-1');
+    const authService = { handleUnauthorized: jest.fn() };
+    const interceptor = new AuthInterceptor({ get: jest.fn().mockReturnValue(authService) } as any);
+    const request = new HttpRequest('GET', 'https://evil.example.com/api/collect');
+    const next: HttpHandler = {
+      handle: jest.fn((handledRequest: HttpRequest<unknown>) => {
+        expect(handledRequest.headers.has('Authorization')).toBe(false);
+        expect(handledRequest.withCredentials).toBe(false);
+        return of(new HttpResponse({ status: 200 })) as unknown as ReturnType<HttpHandler['handle']>;
+      })
+    };
+
+    interceptor.intercept(request, next).subscribe(() => {
+      localStorage.removeItem('stock_analyzer_token');
+      done();
+    });
+  });
+
   it('clears stale local auth on protected API 401 responses', done => {
     const authService = { handleUnauthorized: jest.fn() };
     const interceptor = new AuthInterceptor({ get: jest.fn().mockReturnValue(authService) } as any);

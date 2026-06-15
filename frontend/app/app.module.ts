@@ -22,6 +22,8 @@ import { SignupComponent } from './components/signup.component';
 import { ForgotPasswordComponent } from './components/forgot-password.component';
 import { ResetPasswordComponent } from './components/reset-password.component';
 import { DebtCalculatorComponent } from './components/debt-calculator.component';
+import { RealEstateComponent } from './components/real-estate.component';
+import { TaxesComponent } from './components/taxes.component';
 import { NetWorthComponent } from './components/net-worth.component';
 import { IncomeExpensesComponent } from './components/income-expenses.component';
 import { SettingsComponent } from './components/settings.component';
@@ -45,6 +47,8 @@ import { AuthInterceptor } from './services/auth.interceptor';
     ForgotPasswordComponent,
     ResetPasswordComponent,
     DebtCalculatorComponent,
+    RealEstateComponent,
+    TaxesComponent,
     NetWorthComponent,
     IncomeExpensesComponent,
     SettingsComponent

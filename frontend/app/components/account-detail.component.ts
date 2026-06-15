@@ -1,5 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { forkJoin, Subject, Subscription, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
 import {
   Account,
@@ -8,10 +10,12 @@ import {
   DividendIncomeSummary,
   Holding,
   Portfolio,
+  RecurringBuySchedule,
   RecurringInvestment
 } from '../models/snaptrade.model';
-import { StockHistoricalData } from '../models/stock.model';
+import { StockHistoricalData, StockSearchResult } from '../models/stock.model';
 import { SnapTradeService } from '../services/snaptrade.service';
+import { StockService } from '../services/stock.service';
 
 type ChartRange = {
   label: string;
@@ -24,6 +28,12 @@ type FutureProjection = {
   value: number;
   annualIncome: number;
   monthlyIncome: number;
+};
+
+type PriceAppreciationHolding = {
+  symbol: string;
+  weight: number;
+  cagr: number | null;
 };
 
 @Component({
@@ -88,16 +98,16 @@ type FutureProjection = {
             </button>
           </div>
 
-          <div class="future-loading" *ngIf="recurringLoading || dividendLoading">
+          <div class="future-loading" *ngIf="recurringLoading || dividendLoading || priceAppreciationLoading">
             <div class="spinner"></div>
             <p>Estimating this account's future pace...</p>
           </div>
 
-          <div class="compact-empty" *ngIf="!recurringLoading && !dividendLoading && (recurringError || dividendError)">
-            <p>{{ recurringError || dividendError }}</p>
+          <div class="compact-empty" *ngIf="!recurringLoading && !dividendLoading && !priceAppreciationLoading && (recurringError || dividendError || priceAppreciationError)">
+            <p>{{ recurringError || dividendError || priceAppreciationError }}</p>
           </div>
 
-          <ng-container *ngIf="!recurringLoading && !dividendLoading && !recurringError && !dividendError">
+          <ng-container *ngIf="!recurringLoading && !dividendLoading && !priceAppreciationLoading && !recurringError && !dividendError && !priceAppreciationError">
             <div class="future-summary-grid">
               <div class="future-summary-item">
                 <label for="future-monthly-contribution">Monthly Contributions</label>
@@ -123,6 +133,40 @@ type FutureProjection = {
               <div class="future-summary-item">
                 <label>{{ getFutureYieldLabel() }}</label>
                 <strong>{{ getAccountDividendYield() | number:'1.2-2' }}%</strong>
+              </div>
+              <div class="future-summary-item cagr-summary-item">
+                <button
+                  class="cagr-summary-button"
+                  type="button"
+                  [attr.aria-expanded]="showCagrBreakdown"
+                  aria-controls="holding-cagr-breakdown"
+                  (click)="toggleCagrBreakdown()">
+                  <span>Price CAGR</span>
+                  <strong>{{ priceAppreciationCagr | number:'1.2-2' }}%</strong>
+                  <small>{{ priceAppreciationHoldings.length }} {{ priceAppreciationHoldings.length === 1 ? 'holding' : 'holdings' }}</small>
+                </button>
+                <div
+                  id="holding-cagr-breakdown"
+                  class="cagr-breakdown-menu"
+                  *ngIf="showCagrBreakdown"
+                  role="region"
+                  aria-label="Price CAGR by holding">
+                  <div class="cagr-breakdown-row cagr-breakdown-header">
+                    <span>Holding</span>
+                    <span>Weight</span>
+                    <span>CAGR</span>
+                  </div>
+                  <div class="cagr-breakdown-row" *ngFor="let holding of priceAppreciationHoldings">
+                    <strong>{{ holding.symbol }}</strong>
+                    <span>{{ holding.weight * 100 | number:'1.1-1' }}%</span>
+                    <span [class.positive]="(holding.cagr || 0) >= 0" [class.negative]="(holding.cagr || 0) < 0">
+                      {{ formatCagr(holding.cagr) }}
+                    </span>
+                  </div>
+                  <div class="cagr-breakdown-empty" *ngIf="priceAppreciationHoldings.length === 0">
+                    No holding history available.
+                  </div>
+                </div>
               </div>
               <label class="future-reinvest-toggle">
                 <input type="checkbox" [(ngModel)]="reinvestDividends" />
@@ -214,7 +258,7 @@ type FutureProjection = {
                 </div>
               </div>
             </ng-container>
-            <ng-container *ngIf="!recurringLoading && !recurringError && filteredRecurringInvestments.length > 0">
+            <ng-container *ngIf="!recurringLoading && !recurringError && combinedRecurringInvestments.length > 0">
               <div class="summary-item">
                 <label>Monthly Recurring Buys</label>
                 <div class="value">{{ formatMoney(getRecurringMonthlyTotal()) }}</div>
@@ -254,7 +298,7 @@ type FutureProjection = {
               </button>
             </div>
             <div class="chart-loading" *ngIf="!showFuture && balanceHistoryLoading">Updating chart...</div>
-            <div class="chart-loading" *ngIf="showFuture && (recurringLoading || dividendLoading)">Estimating future value...</div>
+            <div class="chart-loading" *ngIf="showFuture && (recurringLoading || dividendLoading || priceAppreciationLoading)">Estimating future value...</div>
             <div class="compact-empty" *ngIf="!showFuture && balanceHistoryError && !balanceHistoryLoading">
               <p>{{ balanceHistoryError }}</p>
             </div>
@@ -405,14 +449,18 @@ type FutureProjection = {
               <span>Recurring Buys</span>
               <p>Likely schedules from recent buy activity</p>
             </div>
-            <div class="account-section-summary" *ngIf="!recurringLoading && !recurringError && filteredRecurringInvestments.length > 0" aria-label="Recurring buy totals">
+            <div class="account-section-summary" *ngIf="!recurringLoading && !recurringError && combinedRecurringInvestments.length > 0" aria-label="Recurring buy totals">
               <div>
                 <span>Orders</span>
-                <strong>{{ filteredRecurringInvestments.length }}</strong>
+                <strong>{{ combinedRecurringInvestments.length }}</strong>
               </div>
               <div>
                 <span>Total</span>
                 <strong>{{ formatMoney(getRecurringOrderTotal()) }}</strong>
+              </div>
+              <div>
+                <span>Weekly</span>
+                <strong>{{ formatMoney(getRecurringWeeklyTotal()) }}</strong>
               </div>
               <div>
                 <span>Monthly</span>
@@ -426,6 +474,138 @@ type FutureProjection = {
             <span class="expand-icon" [class.expanded]="isSectionExpanded('recurring')" aria-hidden="true">&rsaquo;</span>
           </div>
           <div id="account-recurring-section" class="account-section-body" *ngIf="isSectionExpanded('recurring')">
+            <div class="recurring-buy-manager">
+              <div class="recurring-buy-manager-header">
+                <div>
+                  <strong>Scheduled by this app</strong>
+                  <p *ngIf="accountSupportsTrading">Automatically place a recurring buy even if your brokerage doesn't offer it.</p>
+                  <p *ngIf="!accountSupportsTrading">This brokerage doesn't support placing trades through the app.</p>
+                </div>
+                <button
+                  *ngIf="accountSupportsTrading"
+                  class="btn btn-primary btn-sm"
+                  type="button"
+                  (click)="openRecurringBuyModal(); $event.stopPropagation()">
+                  + Set up recurring buy
+                </button>
+              </div>
+              <div class="error-message compact" *ngIf="recurringBuysError">
+                <p>{{ recurringBuysError }}</p>
+              </div>
+              <div class="table-wrapper" *ngIf="scheduledRecurringBuys.length > 0">
+                <table class="table recurring-investments-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Buy</th>
+                      <th>Frequency</th>
+                      <th>Next Buy</th>
+                      <th>Last Run</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let schedule of scheduledRecurringBuys" [class.inactive-schedule]="!schedule.active">
+                      <td><strong>{{ schedule.symbol }}</strong></td>
+                      <ng-container *ngIf="editingScheduleId !== schedule.id">
+                        <td>
+                          <ng-container *ngIf="schedule.targetAmount != null">
+                            {{ formatMoney(schedule.targetAmount) }}/buy
+                            <span class="schedule-budget" *ngIf="schedule.accumulatedBudget">(saving {{ formatMoney(schedule.accumulatedBudget) }})</span>
+                          </ng-container>
+                          <ng-container *ngIf="schedule.targetAmount == null">{{ schedule.units }} sh</ng-container>
+                        </td>
+                        <td>{{ titleCase(schedule.frequency) }}</td>
+                        <td>{{ schedule.nextRunDate || '—' }}</td>
+                        <td>{{ schedule.lastRunDate || 'Never' }}</td>
+                        <td>
+                          {{ schedule.active ? (schedule.lastStatus || 'Scheduled') : 'Paused' }}
+                          <span class="test-buy-inline" *ngIf="testBuyRowResult[schedule.id]">One-off buy: {{ testBuyRowResult[schedule.id] }}</span>
+                        </td>
+                      </ng-container>
+                      <td *ngIf="editingScheduleId === schedule.id" colspan="5">
+                        <div class="recurring-edit-form">
+                          <div class="recurring-buy-mode">
+                            <button type="button" class="recurring-buy-mode-option" [class.active]="scheduleEditDraft.mode === 'shares'" (click)="scheduleEditDraft.mode = 'shares'">Shares</button>
+                            <button type="button" class="recurring-buy-mode-option" [class.active]="scheduleEditDraft.mode === 'dollar'" (click)="scheduleEditDraft.mode = 'dollar'">Dollar</button>
+                          </div>
+                          <input
+                            *ngIf="scheduleEditDraft.mode === 'shares'"
+                            type="number" min="0" step="1"
+                            [(ngModel)]="scheduleEditDraft.units"
+                            aria-label="Shares per buy"
+                            (keydown.enter)="saveScheduleEdit(schedule)"
+                            (keydown.escape)="cancelScheduleEdit()" />
+                          <input
+                            *ngIf="scheduleEditDraft.mode === 'dollar'"
+                            type="number" min="0" step="1"
+                            [(ngModel)]="scheduleEditDraft.targetAmount"
+                            aria-label="Dollar target per buy"
+                            (keydown.enter)="saveScheduleEdit(schedule)"
+                            (keydown.escape)="cancelScheduleEdit()" />
+                          <select [(ngModel)]="scheduleEditDraft.frequency" aria-label="Recurring buy frequency">
+                            <option *ngFor="let option of recurringBuyFrequencyOptions" [value]="option.value">{{ option.label }}</option>
+                          </select>
+                          <button class="btn btn-primary btn-sm" type="button" (click)="saveScheduleEdit(schedule)" [disabled]="savingScheduleId === schedule.id">
+                            {{ savingScheduleId === schedule.id ? 'Saving...' : 'Save' }}
+                          </button>
+                          <button class="btn btn-secondary btn-sm" type="button" (click)="cancelScheduleEdit()" [disabled]="savingScheduleId === schedule.id">Cancel</button>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="recurring-row-actions" *ngIf="editingScheduleId !== schedule.id" aria-label="Scheduled recurring buy actions">
+                          <button
+                            class="recurring-action-btn"
+                            type="button"
+                            title="Edit recurring buy"
+                            aria-label="Edit recurring buy"
+                            [disabled]="testingBuyId === schedule.id || removingRecurringBuyId === schedule.id"
+                            (click)="startScheduleEdit(schedule)">
+                            <span aria-hidden="true">&#9998;</span>
+                          </button>
+                          <button
+                            class="recurring-action-btn"
+                            type="button"
+                            title="Buy once now"
+                            aria-label="Buy once now"
+                            [disabled]="testingBuyId === schedule.id || removingRecurringBuyId === schedule.id"
+                            (click)="testBuySchedule(schedule)">
+                            <span aria-hidden="true">{{ testingBuyId === schedule.id ? '…' : '⚡' }}</span>
+                          </button>
+                          <button
+                            class="recurring-action-btn"
+                            type="button"
+                            [title]="schedule.active ? 'Pause recurring buy' : 'Resume recurring buy'"
+                            [attr.aria-label]="schedule.active ? 'Pause recurring buy' : 'Resume recurring buy'"
+                            [disabled]="togglingRecurringBuyId === schedule.id || removingRecurringBuyId === schedule.id"
+                            (click)="toggleRecurringBuyActive(schedule)">
+                            <span aria-hidden="true">{{ schedule.active ? '⏸' : '▶' }}</span>
+                          </button>
+                          <button
+                            class="recurring-action-btn danger"
+                            type="button"
+                            title="Remove recurring buy"
+                            aria-label="Remove recurring buy"
+                            [disabled]="removingRecurringBuyId === schedule.id"
+                            (click)="deleteRecurringBuy(schedule)">
+                            <span aria-hidden="true">&times;</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="compact-empty" *ngIf="accountSupportsTrading && !recurringBuysLoading && scheduledRecurringBuys.length === 0">
+                <p>No app-scheduled recurring buys yet.</p>
+              </div>
+            </div>
+
+            <div class="recurring-detected-label">
+              <span>Detected from activity</span>
+              <p>Likely schedules inferred from recent buy activity</p>
+            </div>
             <div class="loading-state compact" *ngIf="recurringLoading">
               <div class="spinner"></div>
               <p>Checking recurring buys...</p>
@@ -433,7 +613,7 @@ type FutureProjection = {
             <div class="error-message compact" *ngIf="recurringError && !recurringLoading">
               <p>{{ recurringError }}</p>
             </div>
-            <div class="table-wrapper" *ngIf="!recurringLoading && filteredRecurringInvestments.length > 0">
+            <div class="table-wrapper" *ngIf="!recurringLoading && combinedRecurringInvestments.length > 0">
               <table class="table recurring-investments-table">
                 <thead>
                   <tr>
@@ -461,8 +641,11 @@ type FutureProjection = {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr *ngFor="let investment of filteredRecurringInvestments; let i = index">
-                    <td><strong>{{ investment.symbol }}</strong></td>
+                  <tr *ngFor="let investment of combinedRecurringInvestments; let i = index">
+                    <td>
+                      <strong>{{ investment.symbol }}</strong>
+                      <span class="recurring-source-badge" *ngIf="investment.source === 'scheduled'">Scheduled</span>
+                    </td>
                     <td *ngIf="recurringEditingIndex !== i">{{ titleCase(investment.frequency) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(investment.amount) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringMonthlyAmount(investment)) }}</td>
@@ -489,7 +672,7 @@ type FutureProjection = {
                       </div>
                     </td>
                     <td>
-                      <div class="recurring-row-actions" aria-label="Recurring buy actions">
+                      <div class="recurring-row-actions" *ngIf="investment.source !== 'scheduled'" aria-label="Recurring buy actions">
                         <button
                           class="recurring-action-btn"
                           type="button"
@@ -509,16 +692,126 @@ type FutureProjection = {
                           <span aria-hidden="true">&times;</span>
                         </button>
                       </div>
+                      <span class="recurring-managed-note" *ngIf="investment.source === 'scheduled'" title="Manage in the Scheduled by this app section above">Managed above</span>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div class="compact-empty" *ngIf="!recurringLoading && !recurringError && filteredRecurringInvestments.length === 0">
+            <div class="compact-empty" *ngIf="!recurringLoading && !recurringError && combinedRecurringInvestments.length === 0">
               <p>No recurring buys detected for this account yet.</p>
             </div>
           </div>
         </section>
+
+        <div class="modal-overlay" *ngIf="showRecurringBuyModal" (click)="closeRecurringBuyModal()">
+          <div class="modal-content recurring-buy-modal" role="dialog" aria-modal="true" aria-labelledby="recurring-buy-title" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2 id="recurring-buy-title">Set up recurring buy</h2>
+              <button class="modal-close" type="button" aria-label="Close" (click)="closeRecurringBuyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+              <p class="recurring-buy-subtitle">
+                The app will place a market buy on
+                <strong>{{ account?.nickname || account?.name }}</strong>
+                on this schedule.
+              </p>
+              <div class="recurring-buy-field recurring-buy-search">
+                <span>Stock</span>
+                <input
+                  type="text"
+                  [ngModel]="symbolQuery"
+                  (ngModelChange)="onSymbolSearch($event)"
+                  placeholder="Search symbol or name (e.g. AAPL)"
+                  autocomplete="off"
+                  aria-label="Search for a stock" />
+                <div class="symbol-search-results" *ngIf="stockSearchResults.length > 0 && !selectedStock">
+                  <button
+                    type="button"
+                    class="symbol-search-result"
+                    *ngFor="let result of stockSearchResults"
+                    (click)="selectStock(result)">
+                    <strong>{{ result.symbol }}</strong>
+                    <span>{{ result.name }}</span>
+                    <small *ngIf="result.exchange">{{ result.exchange }}</small>
+                  </button>
+                </div>
+                <p class="symbol-search-hint" *ngIf="stockSearchLoading">Searching…</p>
+                <p class="symbol-search-hint" *ngIf="!stockSearchLoading && symbolQuery.trim().length > 0 && stockSearchResults.length === 0 && !selectedStock">
+                  No matching stocks found.
+                </p>
+                <p class="symbol-selected" *ngIf="selectedStock">
+                  Selected <strong>{{ selectedStock.symbol }}</strong> — {{ selectedStock.name }}
+                </p>
+              </div>
+              <div class="recurring-buy-field">
+                <span>Buy by</span>
+                <div class="recurring-buy-mode">
+                  <button
+                    type="button"
+                    class="recurring-buy-mode-option"
+                    [class.active]="recurringBuyDraft.mode === 'shares'"
+                    (click)="recurringBuyDraft.mode = 'shares'">Shares</button>
+                  <button
+                    type="button"
+                    class="recurring-buy-mode-option"
+                    [class.active]="recurringBuyDraft.mode === 'dollar'"
+                    (click)="recurringBuyDraft.mode = 'dollar'">Dollar amount</button>
+                </div>
+              </div>
+              <label class="recurring-buy-field" *ngIf="recurringBuyDraft.mode === 'shares'">
+                <span>Shares per buy</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  [(ngModel)]="recurringBuyDraft.units"
+                  (keydown.enter)="submitRecurringBuy()" />
+              </label>
+              <label class="recurring-buy-field" *ngIf="recurringBuyDraft.mode === 'dollar'">
+                <span>Dollar target per buy</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  [(ngModel)]="recurringBuyDraft.targetAmount"
+                  (keydown.enter)="submitRecurringBuy()" />
+                <small class="recurring-buy-help">
+                  Each run buys as many whole shares as \${{ recurringBuyDraft.targetAmount || 0 }} covers; leftover carries to the next run until it can buy a share.
+                </small>
+              </label>
+              <label class="recurring-buy-field">
+                <span>Frequency</span>
+                <select [(ngModel)]="recurringBuyDraft.frequency">
+                  <option *ngFor="let option of recurringBuyFrequencyOptions" [value]="option.value">{{ option.label }}</option>
+                </select>
+              </label>
+              <div class="error-message compact" *ngIf="recurringBuyError">
+                <p>{{ recurringBuyError }}</p>
+              </div>
+              <div class="test-buy-row">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  type="button"
+                  [disabled]="testBuyPlacing || !selectedStock"
+                  (click)="testBuy()">
+                  {{ testBuyPlacing ? 'Sending buy…' : 'Buy once now' }}
+                </button>
+                <span class="test-buy-hint">Places a one-off market buy immediately. In live trading, this submits a real order.</span>
+              </div>
+              <div class="test-buy-result" *ngIf="testBuyResult">{{ testBuyResult }}</div>
+              <div class="error-message compact" *ngIf="testBuyError">
+                <p>{{ testBuyError }}</p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" type="button" (click)="closeRecurringBuyModal()" [disabled]="savingRecurringBuy">Cancel</button>
+              <button class="btn btn-primary" type="button" (click)="submitRecurringBuy()" [disabled]="savingRecurringBuy">
+                {{ savingRecurringBuy ? 'Saving...' : 'Create recurring buy' }}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <section class="card account-section-card">
           <button
@@ -575,6 +868,7 @@ type FutureProjection = {
                     <th>Current Price</th>
                     <th>Total Value</th>
                     <th>Allocation</th>
+                    <th>Avg CAGR</th>
                     <th>Gain/Loss</th>
                     <th>Gain/Loss %</th>
                   </tr>
@@ -590,6 +884,9 @@ type FutureProjection = {
                     <td>{{ formatMoney(holding.currentPrice) }}</td>
                     <td>{{ formatMoney(holding.totalValue) }}</td>
                     <td>{{ getHoldingAllocation(holding, account) | number:'1.2-2' }}%</td>
+                    <td [class.positive]="(getHoldingCagr(holding) || 0) >= 0" [class.negative]="(getHoldingCagr(holding) || 0) < 0">
+                      {{ formatCagr(getHoldingCagr(holding)) }}
+                    </td>
                     <td [class.positive]="holding.gainLoss >= 0" [class.negative]="holding.gainLoss < 0">
                       {{ formatMoney(holding.gainLoss, true) }}
                     </td>
@@ -603,6 +900,7 @@ type FutureProjection = {
                     <td colspan="4"><strong>Account Total</strong></td>
                     <td><strong>{{ formatMoney(getAccountTotalValue(account)) }}</strong></td>
                     <td><strong>{{ getAccountHoldingsAllocationTotal(account) | number:'1.2-2' }}%</strong></td>
+                    <td><strong>{{ priceAppreciationCagr | number:'1.2-2' }}%</strong></td>
                     <td [class.positive]="getAccountTotalGainLoss(account) >= 0" [class.negative]="getAccountTotalGainLoss(account) < 0">
                       <strong>{{ formatMoney(getAccountTotalGainLoss(account), true) }}</strong>
                     </td>
@@ -679,7 +977,7 @@ type FutureProjection = {
     </div>
   `
 })
-export class AccountDetailComponent implements OnInit {
+export class AccountDetailComponent implements OnInit, OnDestroy {
   portfolio: Portfolio | null = null;
   account: Account | null = null;
   loading = false;
@@ -692,6 +990,12 @@ export class AccountDetailComponent implements OnInit {
   dividendIncome: DividendIncomeSummary | null = null;
   dividendLoading = false;
   dividendError: string | null = null;
+  priceAppreciationLoading = false;
+  priceAppreciationError: string | null = null;
+  priceAppreciationCagr = 0;
+  priceAppreciationHoldings: PriceAppreciationHolding[] = [];
+  showCagrBreakdown = false;
+  private priceAppreciationCagrBySymbol = new Map<string, number | null>();
   dividendEditingIndex: number | null = null;
   savingDividendIndex: number | null = null;
   removingDividendIndex: number | null = null;
@@ -716,6 +1020,7 @@ export class AccountDetailComponent implements OnInit {
     { label: 'All', daysBack: Number.POSITIVE_INFINITY }
   ];
   selectedRange = this.chartRanges[1];
+  private readonly priceAppreciationHistoryMonths = 61;
   private balanceHistoryCache = new Map<string, StockHistoricalData[]>();
   private allBalanceHistory: StockHistoricalData[] = [];
   editingNicknameAccountId: string | null = null;
@@ -734,6 +1039,47 @@ export class AccountDetailComponent implements OnInit {
   savingRecurringIndex: number | null = null;
   removingRecurringIndex: number | null = null;
   clearingRecurringChanges = false;
+  recurringBuySchedules: RecurringBuySchedule[] = [];
+  recurringBuysLoading = false;
+  recurringBuysError: string | null = null;
+  showRecurringBuyModal = false;
+  savingRecurringBuy = false;
+  recurringBuyError: string | null = null;
+  removingRecurringBuyId: string | null = null;
+  togglingRecurringBuyId: string | null = null;
+  recurringBuyDraft: { symbol: string; mode: 'shares' | 'dollar'; units: number; targetAmount: number; frequency: string } = {
+    symbol: '',
+    mode: 'shares',
+    units: 1,
+    targetAmount: 40,
+    frequency: 'monthly'
+  };
+  recurringBuyFrequencyOptions = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'biweekly', label: 'Biweekly' },
+    { value: 'monthly', label: 'Monthly' }
+  ];
+  symbolQuery = '';
+  stockSearchResults: StockSearchResult[] = [];
+  stockSearchLoading = false;
+  selectedStock: StockSearchResult | null = null;
+  testBuyResult: string | null = null;
+  testBuyError: string | null = null;
+  testBuyPlacing = false;
+  testingBuyId: string | null = null;
+  testBuyRowResult: { [id: string]: string } = {};
+  editingScheduleId: string | null = null;
+  savingScheduleId: string | null = null;
+  scheduleEditDraft: { mode: 'shares' | 'dollar'; units: number; targetAmount: number; frequency: string } = {
+    mode: 'shares',
+    units: 1,
+    targetAmount: 40,
+    frequency: 'monthly'
+  };
+  private scheduledPriceMap: { [symbol: string]: number } = {};
+  private symbolSearch$ = new Subject<string>();
+  private symbolSearchSub?: Subscription;
   expandedSections: { [section: string]: boolean } = {
     dividends: false,
     recurring: false,
@@ -766,12 +1112,25 @@ export class AccountDetailComponent implements OnInit {
 
   constructor(
     private snapTradeService: SnapTradeService,
+    private stockService: StockService,
     private route: ActivatedRoute,
     private router: Router
   ) {}
 
   ngOnInit(): void {
+    this.symbolSearchSub = this.symbolSearch$.pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap(query => query.trim().length < 1 ? of([]) : this.stockService.searchStocks(query))
+    ).subscribe(results => {
+      this.stockSearchResults = results;
+      this.stockSearchLoading = false;
+    });
     this.loadAccount();
+  }
+
+  ngOnDestroy(): void {
+    this.symbolSearchSub?.unsubscribe();
   }
 
   loadAccount(refresh = false): void {
@@ -790,7 +1149,9 @@ export class AccountDetailComponent implements OnInit {
           this.balanceHistoryCache.clear();
           this.loadBalanceHistory();
           this.loadRecurringInvestments(refresh);
+          this.loadRecurringBuySchedules();
           this.loadDividendIncome(refresh);
+          this.loadPriceAppreciationCagr(refresh);
         }
       },
       error: (err) => {
@@ -830,6 +1191,333 @@ export class AccountDetailComponent implements OnInit {
     });
   }
 
+  get accountSupportsTrading(): boolean {
+    return !!this.account?.supportsTrading;
+  }
+
+  get scheduledRecurringBuys(): RecurringBuySchedule[] {
+    return this.account
+      ? this.recurringBuySchedules.filter(schedule => schedule.accountId === this.account?.id)
+      : [];
+  }
+
+  // App-scheduled buys (in shares) expressed as dollar recurring investments so they fold
+  // into the same totals/projections as the detected ones. Only active schedules count.
+  get scheduledAsRecurring(): RecurringInvestment[] {
+    return this.scheduledRecurringBuys
+      .filter(schedule => schedule.active)
+      .map(schedule => ({
+        symbol: schedule.symbol,
+        accountId: schedule.accountId,
+        accountName: this.account?.nickname || this.account?.name || '',
+        // Dollar-mode schedules already carry a per-period dollar target; share-mode = units × price.
+        amount: schedule.targetAmount != null
+          ? schedule.targetAmount
+          : (schedule.units || 0) * (this.scheduledPriceMap[(schedule.symbol || '').toUpperCase()] || 0),
+        currency: this.account?.currency || 'USD',
+        frequency: schedule.frequency,
+        confidence: 1,
+        occurrences: 0,
+        lastDate: schedule.lastRunDate || '',
+        nextEstimatedDate: schedule.nextRunDate || null,
+        source: 'scheduled'
+      } as RecurringInvestment));
+  }
+
+  get combinedRecurringInvestments(): RecurringInvestment[] {
+    return [...this.filteredRecurringInvestments, ...this.scheduledAsRecurring];
+  }
+
+  loadRecurringBuySchedules(): void {
+    this.recurringBuysLoading = true;
+    this.recurringBuysError = null;
+
+    this.snapTradeService.getRecurringBuys().subscribe({
+      next: (schedules) => {
+        this.recurringBuySchedules = schedules;
+        this.recurringBuysLoading = false;
+        this.refreshScheduledPrices();
+      },
+      error: (err) => {
+        this.recurringBuySchedules = [];
+        this.recurringBuysError = err.error?.message || err.message || 'Failed to load scheduled recurring buys.';
+        this.recurringBuysLoading = false;
+        console.error('Error loading recurring buys:', err);
+      }
+    });
+  }
+
+  private refreshScheduledPrices(): void {
+    const symbols = Array.from(new Set(
+      this.scheduledRecurringBuys.map(schedule => (schedule.symbol || '').toUpperCase()).filter(Boolean)
+    ));
+    // Seed prices from current holdings where we already have them.
+    const seeded: { [symbol: string]: number } = {};
+    (this.account?.holdings || []).forEach(holding => {
+      const sym = (holding.symbol || '').toUpperCase();
+      if (sym && holding.currentPrice) {
+        seeded[sym] = holding.currentPrice;
+      }
+    });
+    this.scheduledPriceMap = seeded;
+    const missing = symbols.filter(sym => !seeded[sym]);
+    if (missing.length === 0) {
+      return;
+    }
+    this.stockService.getMultipleQuotes(missing).subscribe({
+      next: (quotes) => {
+        const updated = { ...this.scheduledPriceMap };
+        quotes.forEach(quote => {
+          const sym = (quote.symbol || '').toUpperCase();
+          if (sym && quote.price) {
+            updated[sym] = quote.price;
+          }
+        });
+        this.scheduledPriceMap = updated;
+      },
+      error: () => { /* leave totals at best-effort; missing prices contribute 0 */ }
+    });
+  }
+
+  openRecurringBuyModal(): void {
+    this.recurringBuyDraft = { symbol: '', mode: 'shares', units: 1, targetAmount: 40, frequency: 'monthly' };
+    this.symbolQuery = '';
+    this.stockSearchResults = [];
+    this.stockSearchLoading = false;
+    this.selectedStock = null;
+    this.testBuyResult = null;
+    this.testBuyError = null;
+    this.recurringBuyError = null;
+    this.showRecurringBuyModal = true;
+  }
+
+  closeRecurringBuyModal(): void {
+    if (this.savingRecurringBuy || this.testBuyPlacing) {
+      return;
+    }
+    this.showRecurringBuyModal = false;
+    this.recurringBuyError = null;
+  }
+
+  onSymbolSearch(query: string): void {
+    this.symbolQuery = query;
+    // Typing invalidates a previous pick — the symbol must come from a real search result.
+    if (this.selectedStock && query.trim().toUpperCase() !== this.selectedStock.symbol) {
+      this.selectedStock = null;
+      this.recurringBuyDraft.symbol = '';
+    }
+    this.testBuyResult = null;
+    this.testBuyError = null;
+    if (query.trim().length < 1) {
+      this.stockSearchResults = [];
+      this.stockSearchLoading = false;
+      return;
+    }
+    this.stockSearchLoading = true;
+    this.symbolSearch$.next(query);
+  }
+
+  selectStock(result: StockSearchResult): void {
+    this.selectedStock = result;
+    this.recurringBuyDraft.symbol = result.symbol;
+    this.symbolQuery = result.symbol;
+    this.stockSearchResults = [];
+    this.recurringBuyError = null;
+  }
+
+  submitRecurringBuy(): void {
+    if (!this.account) {
+      return;
+    }
+    if (!this.selectedStock || this.recurringBuyDraft.symbol !== this.selectedStock.symbol) {
+      this.recurringBuyError = 'Pick a stock from the search results.';
+      return;
+    }
+    const symbol = this.selectedStock.symbol;
+    const isDollar = this.recurringBuyDraft.mode === 'dollar';
+    const units = Number(this.recurringBuyDraft.units);
+    const targetAmount = Number(this.recurringBuyDraft.targetAmount);
+    if (isDollar) {
+      if (!targetAmount || targetAmount <= 0) {
+        this.recurringBuyError = 'Enter a dollar amount greater than 0.';
+        return;
+      }
+    } else if (!units || units <= 0) {
+      this.recurringBuyError = 'Enter a number of shares greater than 0.';
+      return;
+    }
+
+    this.savingRecurringBuy = true;
+    this.recurringBuyError = null;
+    this.snapTradeService.createRecurringBuy({
+      accountId: this.account.id,
+      symbol,
+      units: isDollar ? undefined : units,
+      targetAmount: isDollar ? targetAmount : undefined,
+      frequency: this.recurringBuyDraft.frequency
+    }).subscribe({
+      next: (schedule) => {
+        this.recurringBuySchedules = [...this.recurringBuySchedules, schedule];
+        this.savingRecurringBuy = false;
+        this.showRecurringBuyModal = false;
+        this.refreshScheduledPrices();
+      },
+      error: (err) => {
+        this.recurringBuyError = err.error?.message || err.message || 'Failed to create recurring buy.';
+        this.savingRecurringBuy = false;
+      }
+    });
+  }
+
+  testBuy(): void {
+    if (!this.account) {
+      return;
+    }
+    if (!this.selectedStock || this.recurringBuyDraft.symbol !== this.selectedStock.symbol) {
+      this.testBuyError = 'Pick a stock from the search results first.';
+      return;
+    }
+    // Dollar mode can't know whole shares without a live price, so a one-off buy is 1 share.
+    const units = this.recurringBuyDraft.mode === 'dollar' ? 1 : Number(this.recurringBuyDraft.units);
+    if (!units || units <= 0) {
+      this.testBuyError = 'Enter a number of shares greater than 0.';
+      return;
+    }
+    if (!this.confirmOneTimeBuy(this.selectedStock.symbol, units)) {
+      return;
+    }
+
+    this.testBuyPlacing = true;
+    this.testBuyResult = null;
+    this.testBuyError = null;
+    this.snapTradeService.placeOrder(this.account.id, {
+      action: 'BUY',
+      symbol: this.selectedStock.symbol,
+      units,
+      orderType: 'MARKET',
+      timeInForce: 'DAY'
+    }).subscribe({
+      next: (execution) => {
+        const detail = execution.brokerageOrderId ? ` (order ${execution.brokerageOrderId})` : '';
+        this.testBuyResult = `Buy request sent: ${execution.status || 'submitted'}${detail}`;
+        this.testBuyPlacing = false;
+      },
+      error: (err) => {
+        this.testBuyError = err.error?.message || err.message || 'Buy failed.';
+        this.testBuyPlacing = false;
+      }
+    });
+  }
+
+  testBuySchedule(schedule: RecurringBuySchedule): void {
+    if (!this.account) {
+      return;
+    }
+    const units = schedule.units ?? 1;
+    if (!this.confirmOneTimeBuy(schedule.symbol, units)) {
+      return;
+    }
+    this.testingBuyId = schedule.id;
+    this.recurringBuysError = null;
+    this.snapTradeService.placeOrder(this.account.id, {
+      action: 'BUY',
+      symbol: schedule.symbol,
+      units,
+      orderType: 'MARKET',
+      timeInForce: 'DAY'
+    }).subscribe({
+      next: (execution) => {
+        const detail = execution.brokerageOrderId ? ` (order ${execution.brokerageOrderId})` : '';
+        this.testBuyRowResult = { ...this.testBuyRowResult, [schedule.id]: `${execution.status || 'submitted'}${detail}` };
+        this.testingBuyId = null;
+      },
+      error: (err) => {
+        this.recurringBuysError = err.error?.message || err.message || 'Buy failed.';
+        this.testingBuyId = null;
+      }
+    });
+  }
+
+  private confirmOneTimeBuy(symbol: string, units: number): boolean {
+    return window.confirm(
+      `Place a one-off market buy for ${units} share${units === 1 ? '' : 's'} of ${symbol}? ` +
+      'If trading mode is live, this submits a real order.'
+    );
+  }
+
+  startScheduleEdit(schedule: RecurringBuySchedule): void {
+    const isDollar = schedule.targetAmount != null;
+    this.scheduleEditDraft = {
+      mode: isDollar ? 'dollar' : 'shares',
+      units: schedule.units ?? 1,
+      targetAmount: schedule.targetAmount ?? 40,
+      frequency: schedule.frequency
+    };
+    this.recurringBuysError = null;
+    this.editingScheduleId = schedule.id;
+  }
+
+  cancelScheduleEdit(): void {
+    this.editingScheduleId = null;
+  }
+
+  saveScheduleEdit(schedule: RecurringBuySchedule): void {
+    const isDollar = this.scheduleEditDraft.mode === 'dollar';
+    const units = Number(this.scheduleEditDraft.units);
+    const targetAmount = Number(this.scheduleEditDraft.targetAmount);
+    if (isDollar ? (!targetAmount || targetAmount <= 0) : (!units || units <= 0)) {
+      this.recurringBuysError = isDollar ? 'Enter a dollar amount greater than 0.' : 'Enter a number of shares greater than 0.';
+      return;
+    }
+
+    this.savingScheduleId = schedule.id;
+    this.recurringBuysError = null;
+    this.snapTradeService.updateRecurringBuy(schedule.id, {
+      units: isDollar ? undefined : units,
+      targetAmount: isDollar ? targetAmount : undefined,
+      frequency: this.scheduleEditDraft.frequency
+    }).subscribe({
+      next: (updated) => {
+        this.recurringBuySchedules = this.recurringBuySchedules.map(item => item.id === updated.id ? updated : item);
+        this.savingScheduleId = null;
+        this.editingScheduleId = null;
+        this.refreshScheduledPrices();
+      },
+      error: (err) => {
+        this.recurringBuysError = err.error?.message || err.message || 'Failed to update recurring buy.';
+        this.savingScheduleId = null;
+      }
+    });
+  }
+
+  toggleRecurringBuyActive(schedule: RecurringBuySchedule): void {
+    this.togglingRecurringBuyId = schedule.id;
+    this.snapTradeService.updateRecurringBuy(schedule.id, { active: !schedule.active }).subscribe({
+      next: (updated) => {
+        this.recurringBuySchedules = this.recurringBuySchedules.map(item => item.id === updated.id ? updated : item);
+        this.togglingRecurringBuyId = null;
+      },
+      error: (err) => {
+        this.recurringBuysError = err.error?.message || err.message || 'Failed to update recurring buy.';
+        this.togglingRecurringBuyId = null;
+      }
+    });
+  }
+
+  deleteRecurringBuy(schedule: RecurringBuySchedule): void {
+    this.removingRecurringBuyId = schedule.id;
+    this.snapTradeService.deleteRecurringBuy(schedule.id).subscribe({
+      next: () => {
+        this.recurringBuySchedules = this.recurringBuySchedules.filter(item => item.id !== schedule.id);
+        this.removingRecurringBuyId = null;
+      },
+      error: (err) => {
+        this.recurringBuysError = err.error?.message || err.message || 'Failed to remove recurring buy.';
+        this.removingRecurringBuyId = null;
+      }
+    });
+  }
+
   loadDividendIncome(refresh = false): void {
     this.dividendLoading = true;
     this.dividendError = null;
@@ -846,6 +1534,187 @@ export class AccountDetailComponent implements OnInit {
         console.error('Error loading dividend income:', err);
       }
     });
+  }
+
+  loadPriceAppreciationCagr(refresh = false): void {
+    const holdings = this.account?.holdings || [];
+    const totalHoldingValue = this.account ? this.getAccountTotalValue(this.account) : 0;
+    const weightedHoldings = holdings
+      .map(holding => ({
+        symbol: (holding.symbol || '').trim().toUpperCase(),
+        weight: totalHoldingValue > 0 ? (holding.totalValue || 0) / totalHoldingValue : 0
+      }))
+      .filter(holding => holding.symbol && holding.weight > 0);
+
+    this.priceAppreciationError = null;
+    this.priceAppreciationCagr = 0;
+    this.priceAppreciationHoldings = weightedHoldings.map(holding => ({
+      symbol: holding.symbol,
+      weight: holding.weight,
+      cagr: null
+    }));
+    this.cachePriceAppreciationCagrs(this.priceAppreciationHoldings);
+
+    if (weightedHoldings.length === 0) {
+      this.priceAppreciationLoading = false;
+      return;
+    }
+
+    this.priceAppreciationLoading = true;
+
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    startDate.setFullYear(endDate.getFullYear() - 5);
+
+    forkJoin(
+      weightedHoldings.map(holding =>
+        this.stockService.getHistoricalData(
+          holding.symbol,
+          startDate,
+          endDate,
+          '1m',
+          refresh,
+          this.priceAppreciationHistoryMonths
+        ).pipe(catchError(() => of([] as StockHistoricalData[])))
+      )
+    ).subscribe({
+      next: (histories) => {
+        let weightedCagrTotal = 0;
+        let coveredWeight = 0;
+        const priceAppreciationHoldings = weightedHoldings.map((holding, index) => {
+          const cagr = this.getHistoricalCagr(histories[index]);
+
+          if (cagr !== null) {
+            weightedCagrTotal += cagr * holding.weight;
+            coveredWeight += holding.weight;
+          }
+
+          return {
+            symbol: holding.symbol,
+            weight: holding.weight,
+            cagr
+          };
+        });
+
+        this.priceAppreciationHoldings = priceAppreciationHoldings;
+        this.cachePriceAppreciationCagrs(priceAppreciationHoldings);
+        this.priceAppreciationCagr = coveredWeight > 0 ? (weightedCagrTotal / coveredWeight) * 100 : 0;
+        this.priceAppreciationLoading = false;
+      },
+      error: (err) => {
+        this.priceAppreciationCagr = 0;
+        this.priceAppreciationHoldings = weightedHoldings.map(holding => ({
+          symbol: holding.symbol,
+          weight: holding.weight,
+          cagr: null
+        }));
+        this.cachePriceAppreciationCagrs(this.priceAppreciationHoldings);
+        this.priceAppreciationError = err.error?.message || err.message || 'Failed to load price appreciation.';
+        this.priceAppreciationLoading = false;
+        console.error('Error loading price appreciation:', err);
+      }
+    });
+  }
+
+  private cachePriceAppreciationCagrs(holdings: PriceAppreciationHolding[]): void {
+    this.priceAppreciationCagrBySymbol = new Map(
+      holdings.map(holding => [holding.symbol.toUpperCase(), holding.cagr])
+    );
+  }
+
+  getHoldingCagr(holding: Holding): number | null {
+    const symbol = (holding.symbol || '').trim().toUpperCase();
+    return this.priceAppreciationCagrBySymbol.has(symbol)
+      ? this.priceAppreciationCagrBySymbol.get(symbol)!
+      : null;
+  }
+
+  toggleCagrBreakdown(): void {
+    this.showCagrBreakdown = !this.showCagrBreakdown;
+  }
+
+  formatCagr(cagr: number | null): string {
+    if (cagr === null) {
+      return 'N/A';
+    }
+
+    return `${(cagr * 100).toFixed(2)}%`;
+  }
+
+  private getHistoricalCagr(history: StockHistoricalData[]): number | null {
+    const sorted = (history || [])
+      .filter(point => point.close > 0)
+      .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+
+    if (sorted.length < 2) {
+      return null;
+    }
+
+    const latest = sorted[sorted.length - 1];
+    const annualPoints = [latest];
+
+    for (let yearsBack = 1; yearsBack <= 5; yearsBack += 1) {
+      const targetDate = new Date(latest.date);
+      targetDate.setFullYear(targetDate.getFullYear() - yearsBack);
+      const point = this.findClosestHistoricalPointOnOrBefore(sorted, targetDate);
+
+      if (!point) {
+        break;
+      }
+
+      if (!annualPoints.some(existing => new Date(existing.date).getTime() === new Date(point.date).getTime())) {
+        annualPoints.push(point);
+      }
+    }
+
+    const orderedAnnualPoints = annualPoints.sort((left, right) =>
+      new Date(left.date).getTime() - new Date(right.date).getTime()
+    );
+
+    if (orderedAnnualPoints.length < 2) {
+      return this.getAnnualizedReturn(sorted[0], latest);
+    }
+
+    const annualizedReturns = orderedAnnualPoints
+      .slice(1)
+      .map((point, index) => this.getAnnualizedReturn(orderedAnnualPoints[index], point))
+      .filter((value): value is number => value !== null);
+
+    if (annualizedReturns.length === 0) {
+      return null;
+    }
+
+    return annualizedReturns.reduce((sum, value) => sum + value, 0) / annualizedReturns.length;
+  }
+
+  private findClosestHistoricalPointOnOrBefore(
+    sortedHistory: StockHistoricalData[],
+    targetDate: Date
+  ): StockHistoricalData | null {
+    const targetTime = targetDate.getTime();
+
+    for (let index = sortedHistory.length - 1; index >= 0; index -= 1) {
+      if (new Date(sortedHistory[index].date).getTime() <= targetTime) {
+        return sortedHistory[index];
+      }
+    }
+
+    return null;
+  }
+
+  private getAnnualizedReturn(
+    first: StockHistoricalData,
+    last: StockHistoricalData
+  ): number | null {
+    const elapsedYears = (
+      new Date(last.date).getTime() - new Date(first.date).getTime()
+    ) / (365.25 * 24 * 60 * 60 * 1000);
+
+    if (elapsedYears <= 0 || first.close <= 0 || last.close <= 0) {
+      return null;
+    }
+
+    return Math.pow(last.close / first.close, 1 / elapsedYears) - 1;
   }
 
   selectRange(range: ChartRange): void {
@@ -1195,6 +2064,10 @@ export class AccountDetailComponent implements OnInit {
     return accountValue > 0 ? (this.getAccountNetAnnualIncome() / accountValue) * 100 : 0;
   }
 
+  private getPriceAppreciationRate(): number {
+    return this.priceAppreciationCagr / 100;
+  }
+
   getFutureYieldLabel(): string {
     return this.isMarginAccount() ? 'Income Yield (Gross)' : 'Income Yield';
   }
@@ -1203,10 +2076,11 @@ export class AccountDetailComponent implements OnInit {
     const currentValue = this.getFutureStartingValue();
     const annualRecurringInvestment = this.getFutureYearlyContribution();
     const netDividendYieldRate = this.getAccountDividendYield() / 100;
+    const annualGrowthRate = this.getPriceAppreciationRate() + (this.reinvestDividends ? netDividendYieldRate : 0);
 
     return Array.from({ length: 20 }, (_, index) => {
       const years = index + 1;
-      const value = this.getProjectedFutureValue(currentValue, annualRecurringInvestment, netDividendYieldRate, years);
+      const value = this.getProjectedFutureValue(currentValue, annualRecurringInvestment, annualGrowthRate, years);
       const annualIncome = netDividendYieldRate !== 0 ? value * netDividendYieldRate : this.getAccountNetAnnualIncome();
 
       return {
@@ -1236,6 +2110,7 @@ export class AccountDetailComponent implements OnInit {
     const currentValue = this.getFutureStartingValue();
     const annualRecurringInvestment = this.getFutureYearlyContribution();
     const netDividendYieldRate = this.getAccountDividendYield() / 100;
+    const annualGrowthRate = this.getPriceAppreciationRate() + (this.reinvestDividends ? netDividendYieldRate : 0);
     const today = new Date();
 
     return Array.from({ length: 241 }, (_, index) => {
@@ -1245,7 +2120,7 @@ export class AccountDetailComponent implements OnInit {
       const value = this.getProjectedFutureValue(
         currentValue,
         annualRecurringInvestment,
-        netDividendYieldRate,
+        annualGrowthRate,
         years
       );
 
@@ -1263,30 +2138,28 @@ export class AccountDetailComponent implements OnInit {
   private getProjectedFutureValue(
     currentValue: number,
     annualRecurringInvestment: number,
-    annualYieldRate: number,
+    annualGrowthRate: number,
     years: number
   ): number {
-    return this.reinvestDividends
-      ? this.getReinvestedFutureValue(currentValue, annualRecurringInvestment, annualYieldRate, years)
-      : currentValue + (annualRecurringInvestment * years);
+    return this.getCompoundedFutureValue(currentValue, annualRecurringInvestment, annualGrowthRate, years);
   }
 
-  private getReinvestedFutureValue(
+  private getCompoundedFutureValue(
     currentValue: number,
     annualRecurringInvestment: number,
-    annualYieldRate: number,
+    annualGrowthRate: number,
     years: number
   ): number {
-    if (annualYieldRate === 0) {
+    if (annualGrowthRate === 0) {
       return currentValue + (annualRecurringInvestment * years);
     }
 
-    if (annualYieldRate <= -1) {
+    if (annualGrowthRate <= -1) {
       return Math.max(0, currentValue + (annualRecurringInvestment * years));
     }
 
-    const growthFactor = Math.pow(1 + annualYieldRate, years);
-    return (currentValue * growthFactor) + (annualRecurringInvestment * ((growthFactor - 1) / annualYieldRate));
+    const growthFactor = Math.pow(1 + annualGrowthRate, years);
+    return (currentValue * growthFactor) + (annualRecurringInvestment * ((growthFactor - 1) / annualGrowthRate));
   }
 
   private getFutureStartingValue(): number {
@@ -1501,11 +2374,15 @@ export class AccountDetailComponent implements OnInit {
   }
 
   getRecurringOrderTotal(): number {
-    return this.filteredRecurringInvestments.reduce((sum, investment) => sum + (investment.amount || 0), 0);
+    return this.combinedRecurringInvestments.reduce((sum, investment) => sum + (investment.amount || 0), 0);
   }
 
   getRecurringDailyTotal(): number {
     return this.getRecurringYearlyTotal() / 252;
+  }
+
+  getRecurringWeeklyTotal(): number {
+    return this.getRecurringYearlyTotal() / 52;
   }
 
   getRecurringMonthlyTotal(): number {
@@ -1543,7 +2420,7 @@ export class AccountDetailComponent implements OnInit {
   }
 
   getRecurringYearlyTotal(): number {
-    return this.filteredRecurringInvestments.reduce(
+    return this.combinedRecurringInvestments.reduce(
       (sum, investment) => sum + this.getRecurringYearlyAmount(investment),
       0
     );

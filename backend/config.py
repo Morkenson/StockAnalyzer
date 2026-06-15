@@ -16,6 +16,11 @@ SNAPTRADE_API_URL = os.getenv("SNAPTRADE_API_URL", "https://api.snaptrade.com/ap
 SNAPTRADE_CLIENT_ID = os.getenv("SNAPTRADE_CLIENT_ID", "")
 SNAPTRADE_CONSUMER_KEY = os.getenv("SNAPTRADE_CONSUMER_KEY", "")
 
+# Trading safety switch. Only "live" actually submits orders to the brokerage;
+# any other value (default "test") simulates placement so local/dev never moves real money.
+TRADING_MODE = (os.getenv("TRADING_MODE", "test") or "test").strip().lower()
+TRADING_LIVE = TRADING_MODE == "live"
+
 # Plaid
 PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
 PLAID_SECRET = os.getenv("PLAID_SECRET", "")

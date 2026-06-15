@@ -3,6 +3,7 @@ import { of } from 'rxjs';
 import { AccountDetailComponent } from '../../app/components/account-detail.component';
 import { DividendIncomeSummary, Portfolio, RecurringInvestment } from '../../app/models/snaptrade.model';
 import { SnapTradeService } from '../../app/services/snaptrade.service';
+import { StockService } from '../../app/services/stock.service';
 
 describe('AccountDetailComponent', () => {
   const portfolio: Portfolio = {
@@ -177,6 +178,32 @@ describe('AccountDetailComponent', () => {
         hidden: true
       })),
       clearRecurringInvestmentPreferences: jest.fn().mockReturnValue(of({ accountId: 'acc-1', removed: 1 })),
+      getRecurringBuys: jest.fn().mockReturnValue(of([])),
+      createRecurringBuy: jest.fn((payload: any) => of({
+        id: 'rb-1',
+        accountId: payload.accountId,
+        symbol: payload.symbol,
+        units: payload.units,
+        frequency: payload.frequency,
+        nextRunDate: '2026-06-14',
+        lastRunDate: null,
+        lastStatus: null,
+        lastOrderId: null,
+        active: true
+      })),
+      updateRecurringBuy: jest.fn((id: string, payload: any) => of({
+        id,
+        accountId: 'acc-1',
+        symbol: 'AAPL',
+        units: 1,
+        frequency: 'monthly',
+        nextRunDate: '2026-06-14',
+        lastRunDate: null,
+        lastStatus: null,
+        lastOrderId: null,
+        active: payload.active ?? true
+      })),
+      deleteRecurringBuy: jest.fn().mockReturnValue(of({ id: 'rb-1', removed: 1 })),
       getDividendIncome: jest.fn().mockReturnValue(of(dividendIncome)),
       updateDividendIncomePreference: jest.fn((preference: any) => of({
         symbol: preference.symbol,
@@ -210,15 +237,42 @@ describe('AccountDetailComponent', () => {
       }
     };
     const router = { navigate: jest.fn() };
+    const stockService = {
+      searchStocks: jest.fn().mockReturnValue(of([])),
+      getMultipleQuotes: jest.fn().mockReturnValue(of([])),
+      getHistoricalData: jest.fn((symbol: string) => {
+        const histories: Record<string, any[]> = {
+          AAPL: [
+            { date: new Date('2021-06-01T00:00:00'), open: 100, high: 100, low: 100, close: 100, volume: 0 },
+            { date: new Date('2022-06-01T00:00:00'), open: 110, high: 110, low: 110, close: 110, volume: 0 },
+            { date: new Date('2023-06-01T00:00:00'), open: 121, high: 121, low: 121, close: 121, volume: 0 },
+            { date: new Date('2024-06-01T00:00:00'), open: 133.1, high: 133.1, low: 133.1, close: 133.1, volume: 0 },
+            { date: new Date('2025-06-01T00:00:00'), open: 146.41, high: 146.41, low: 146.41, close: 146.41, volume: 0 },
+            { date: new Date('2026-06-01T00:00:00'), open: 292.82, high: 292.82, low: 292.82, close: 292.82, volume: 0 }
+          ],
+          MSFT: [
+            { date: new Date('2021-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 },
+            { date: new Date('2022-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 },
+            { date: new Date('2023-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 },
+            { date: new Date('2024-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 },
+            { date: new Date('2025-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 },
+            { date: new Date('2026-06-01T00:00:00'), open: 250, high: 250, low: 250, close: 250, volume: 0 }
+          ]
+        };
+
+        return of(histories[symbol] || []);
+      })
+    };
     const component = new AccountDetailComponent(
       snapTradeService as unknown as SnapTradeService,
+      stockService as unknown as StockService,
       route as any,
       router as any
     );
 
     component.ngOnInit();
 
-    return { component, snapTradeService, router };
+    return { component, snapTradeService, stockService, router };
   }
 
   it('loads the matching account from the portfolio', () => {
@@ -230,7 +284,7 @@ describe('AccountDetailComponent', () => {
   });
 
   it('computes account totals and allocation', () => {
-    const { component } = createComponent();
+    const { component, stockService } = createComponent();
 
     expect(component.getAccountTotalValue(component.account!)).toBe(1100);
     expect(component.getMarginBalance(component.account!)).toBe(0);
@@ -239,7 +293,10 @@ describe('AccountDetailComponent', () => {
     expect(component.getPortfolioAllocation(component.account!, component.portfolio!)).toBeCloseTo(66.67, 2);
     expect(component.getHoldingAllocation(component.account!.holdings![0], component.account!)).toBeCloseTo(54.55, 2);
     expect(component.getAccountHoldingsAllocationTotal(component.account!)).toBe(100);
+    expect(component.formatCagr(component.getHoldingCagr(component.account!.holdings![0]))).toBe('28.02%');
+    expect(component.formatCagr(component.getHoldingCagr(component.account!.holdings![1]))).toBe('0.00%');
     expect(component.getLargestHolding(component.account!)?.symbol).toBe('AAPL');
+    expect(stockService.getHistoricalData).toHaveBeenCalledTimes(2);
   });
 
   it('filters recurring buys and dividend income by account id', () => {
@@ -266,9 +323,31 @@ describe('AccountDetailComponent', () => {
     expect(component.reinvestDividends).toBe(true);
     expect(component.getAccountAnnualDividendIncome()).toBe(96);
     expect(component.getAccountDividendYield()).toBeCloseTo(4.8, 2);
+    expect(component.priceAppreciationCagr).toBeCloseTo(15.28, 2);
+    expect(component.priceAppreciationHoldings).toEqual([
+      expect.objectContaining({ symbol: 'AAPL', weight: 600 / 1100, cagr: expect.any(Number) }),
+      expect.objectContaining({ symbol: 'MSFT', weight: 500 / 1100, cagr: 0 })
+    ]);
+    expect(component.formatCagr(component.priceAppreciationHoldings[0].cagr)).toBe('28.02%');
     expect(component.getFutureProjections()).toHaveLength(20);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBeCloseTo(5830.5, 2);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(23.32, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBeCloseTo(9466.15, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(37.86, 2);
+  });
+
+  it('toggles the holding-level CAGR breakdown', () => {
+    const { component } = createComponent();
+
+    expect(component.showCagrBreakdown).toBe(false);
+
+    component.toggleCagrBreakdown();
+
+    expect(component.showCagrBreakdown).toBe(true);
+    expect(component.priceAppreciationHoldings.map(holding => holding.symbol)).toEqual(['AAPL', 'MSFT']);
+    expect(component.formatCagr(null)).toBe('N/A');
+
+    component.toggleCagrBreakdown();
+
+    expect(component.showCagrBreakdown).toBe(false);
   });
 
   it('switches the account chart to estimated future value when future mode is active', () => {
@@ -286,7 +365,7 @@ describe('AccountDetailComponent', () => {
     expect(component.getActiveChartRangeLabel()).toBe('20Y');
     expect(futureChartData).toHaveLength(241);
     expect(futureChartData[0].close).toBe(2000);
-    expect(futureChartData[60].close).toBeCloseTo(5830.5, 2);
+    expect(futureChartData[60].close).toBeCloseTo(9466.15, 2);
     expect(component.getActiveChartChange()).toBeCloseTo(futureChartData[240].close - 2000, 2);
     expect(component.getActiveChartChangePercent()).toBeGreaterThan(0);
   });
@@ -296,8 +375,8 @@ describe('AccountDetailComponent', () => {
 
     component.reinvestDividends = false;
 
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBe(5000);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(20, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBeCloseTo(8140.64, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(32.56, 2);
   });
 
   it('uses the editable monthly contribution amount for future projections', () => {
@@ -310,8 +389,8 @@ describe('AccountDetailComponent', () => {
 
     expect(component.getRecurringMonthlyTotal()).toBe(50);
     expect(component.getFutureMonthlyContribution()).toBe(200);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBe(14000);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(56, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.value).toBeCloseTo(20345.14, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 5')?.monthlyIncome).toBeCloseTo(81.38, 2);
   });
 
   it('uses gross holding value for margin-account future yield when balance is net of margin', () => {
@@ -324,7 +403,7 @@ describe('AccountDetailComponent', () => {
 
     expect(component.getFutureYieldLabel()).toBe('Income Yield (Gross)');
     expect(component.getAccountDividendYield()).toBeCloseTo(8.73, 2);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 1')?.value).toBeCloseTo(1796, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 1')?.value).toBeCloseTo(1964.11, 2);
   });
 
   it('estimates and saves manual margin balance', () => {
@@ -368,7 +447,7 @@ describe('AccountDetailComponent', () => {
     expect(component.getAnnualMarginCost(component.account!)).toBe(100);
     expect(component.getAccountNetAnnualIncome()).toBe(-4);
     expect(component.getAccountDividendYield()).toBeCloseTo(-0.36, 2);
-    expect(component.getFutureProjections().find(projection => projection.label === 'Year 1')?.annualIncome).toBeCloseTo(-6.17, 2);
+    expect(component.getFutureProjections().find(projection => projection.label === 'Year 1')?.annualIncome).toBeCloseTo(-6.78, 2);
   });
 
   it('edits and removes dividend rows in the account view', () => {

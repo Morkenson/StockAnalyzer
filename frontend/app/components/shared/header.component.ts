@@ -60,8 +60,14 @@ import { filter } from 'rxjs/operators';
               <a routerLink="/networth" routerLinkActive="active" (click)="closeMobileMenu()">
                 Net Worth
               </a>
+              <a routerLink="/real-estate" routerLinkActive="active" (click)="closeMobileMenu()">
+                Real Estate
+              </a>
               <a routerLink="/income-expenses" routerLinkActive="active" (click)="closeMobileMenu()">
                 Income
+              </a>
+              <a routerLink="/taxes" routerLinkActive="active" (click)="closeMobileMenu()">
+                Taxes
               </a>
               <a routerLink="/settings" routerLinkActive="active" (click)="closeMobileMenu()">
                 Settings

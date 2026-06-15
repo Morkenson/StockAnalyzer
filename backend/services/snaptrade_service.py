@@ -11,7 +11,7 @@ from statistics import median
 from snaptrade_client import exceptions as snaptrade_exceptions
 from snaptrade_client import SnapTrade
 
-from config import SNAPTRADE_API_URL, SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY
+from config import SNAPTRADE_API_URL, SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY, TRADING_LIVE
 from models.snaptrade_models import (
     Account,
     Brokerage,
@@ -23,6 +23,8 @@ from models.snaptrade_models import (
     Portfolio,
     RecurringInvestment,
     SnapTradeUser,
+    TradeExecution,
+    TradeImpact,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,12 +203,15 @@ async def get_brokerages() -> list[Brokerage]:
                 name=b.get("slug") or b.get("name", ""),
                 display_name=b.get("displayName") or b.get("name"),
                 supports_oauth=b.get("supportsOAuth", b.get("allows_connection", False)),
+                supports_trading=bool(b.get("allows_trading", b.get("allowsTrading", False))),
             )
         )
     return brokerages
 
 
-async def initiate_connection(user_id: str, user_secret: str, redirect_uri: str) -> str:
+async def initiate_connection(
+    user_id: str, user_secret: str, redirect_uri: str, connection_type: str = "read"
+) -> str:
     result = _sdk_body(
         await _call_snaptrade(
             lambda: _sdk_client().authentication.alogin_snap_trade_user(
@@ -214,6 +219,7 @@ async def initiate_connection(user_id: str, user_secret: str, redirect_uri: str)
                 custom_redirect=redirect_uri,
                 immediate_redirect=True,
                 show_close_button=False,
+                connection_type=connection_type,
                 connection_portal_version="v4",
                 skip_deserialization=True,
             )
@@ -705,6 +711,31 @@ async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
     return accounts
 
 
+async def get_account_trading_map(user_id: str, user_secret: str) -> dict[str, bool]:
+    """Map each brokerage authorization id to whether its brokerage allows trading."""
+    result = _sdk_body(
+        await _call_snaptrade(
+            lambda: _sdk_client().connections.alist_brokerage_authorizations(
+                user_id=user_id,
+                user_secret=user_secret,
+                skip_deserialization=True,
+            )
+        )
+    )
+    authorizations = result if isinstance(result, list) else result.get("authorizations", []) if isinstance(result, dict) else []
+    trading_map: dict[str, bool] = {}
+    for auth in authorizations:
+        if not isinstance(auth, dict):
+            continue
+        auth_id = str(auth.get("id", ""))
+        if not auth_id:
+            continue
+        brokerage = auth.get("brokerage") if isinstance(auth.get("brokerage"), dict) else {}
+        allows_trading = bool(brokerage.get("allows_trading", brokerage.get("allowsTrading", False)))
+        trading_map[auth_id] = allows_trading
+    return trading_map
+
+
 async def get_account_holdings(
     user_id: str, user_secret: str, account_id: str
 ) -> list[Holding]:
@@ -899,6 +930,12 @@ async def get_portfolio(user_id: str, user_secret: str, force_refresh: bool = Fa
             logger.warning("Holdings failed for account %s: %s", acc.id, holdings)
             continue
         acc.holdings = holdings
+    try:
+        trading_map = await get_account_trading_map(user_id, user_secret)
+        for acc in accounts:
+            acc.supports_trading = trading_map.get(acc.brokerage_id, False)
+    except Exception as exc:
+        logger.warning("Could not resolve account trading support for user %s: %s", user_id, exc)
     total_balance = sum(a.balance or 0 for a in accounts)
     total_gain_loss = sum(sum(h.gain_loss for h in a.holdings) for a in accounts)
     total_gain_loss_percent = (
@@ -920,3 +957,234 @@ async def get_portfolio(user_id: str, user_secret: str, force_refresh: bool = Fa
         portfolio.model_copy(deep=True),
     )
     return portfolio
+
+
+# --- Trading -----------------------------------------------------------------
+
+# Maps our public API enums to the values the SnapTrade SDK expects.
+_ORDER_TYPE_SDK = {"MARKET": "Market", "LIMIT": "Limit", "STOP": "Stop", "STOPLIMIT": "StopLimit"}
+_TIME_IN_FORCE_SDK = {"DAY": "Day", "GTC": "GTC", "FOK": "FOK", "IOC": "IOC"}
+
+
+async def _resolve_universal_symbol_id(
+    user_id: str, user_secret: str, account_id: str, symbol: str
+) -> str:
+    """Resolve a ticker (e.g. "AAPL") to SnapTrade's universal_symbol_id for the account."""
+    result = _sdk_body(
+        await _call_snaptrade(
+            lambda: _sdk_client().reference_data.asymbol_search_user_account(
+                account_id=account_id,
+                user_id=user_id,
+                user_secret=user_secret,
+                substring=symbol,
+                skip_deserialization=True,
+            )
+        )
+    )
+    matches = result if isinstance(result, list) else result.get("symbols", []) if isinstance(result, dict) else []
+    wanted = symbol.strip().upper()
+    best = None
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        ticker = str(match.get("symbol") or match.get("raw_symbol") or "").strip().upper()
+        if ticker == wanted:
+            best = match
+            break
+        if best is None:
+            best = match
+    if not best or not best.get("id"):
+        raise SnapTradeServiceError(f"Could not find tradable symbol '{symbol}' for this account", status_code=404)
+    return str(best["id"])
+
+
+def _impact_price(value: object) -> float | None:
+    parsed = _parse_float(value, default=-1.0)
+    return parsed if parsed >= 0 else None
+
+
+def _parse_trade_impact(result: dict, fallback_symbol: str) -> TradeImpact:
+    trade = result.get("trade") if isinstance(result.get("trade"), dict) else {}
+    symbol = trade.get("symbol")
+    if isinstance(symbol, dict):
+        symbol = symbol.get("symbol") or symbol.get("raw_symbol")
+    balance = result.get("combined_remaining_balance") or result.get("combinedRemainingBalance")
+    balance = balance if isinstance(balance, dict) else {}
+    units = _impact_price(trade.get("units"))
+    price = _impact_price(trade.get("price"))
+    estimated_value = round(units * price, 2) if units is not None and price is not None else None
+    return TradeImpact(
+        trade_id=str(trade.get("id", "")),
+        symbol=str(symbol or fallback_symbol),
+        action=str(trade.get("action", "")),
+        units=units,
+        price=price,
+        order_type=str(trade.get("order_type") or trade.get("orderType") or ""),
+        time_in_force=str(trade.get("time_in_force") or trade.get("timeInForce") or ""),
+        estimated_commission=_impact_price(result.get("estimated_commissions") or result.get("estimatedCommissions")),
+        estimated_value=estimated_value,
+        remaining_cash=_impact_price(balance.get("cash")),
+        currency=str(balance.get("currency") or "USD"),
+    )
+
+
+def _parse_trade_execution(result: dict, account_id: str, fallback_symbol: str) -> TradeExecution:
+    symbol = result.get("symbol")
+    if isinstance(symbol, dict):
+        symbol = symbol.get("symbol") or symbol.get("raw_symbol")
+    return TradeExecution(
+        brokerage_order_id=str(result.get("brokerage_order_id") or result.get("brokerageOrderId") or ""),
+        account_id=account_id,
+        symbol=str(symbol or fallback_symbol),
+        action=str(result.get("action", "")),
+        units=_impact_price(result.get("total_quantity") or result.get("units")),
+        price=_impact_price(result.get("execution_price") or result.get("limit_price") or result.get("price")),
+        order_type=str(result.get("order_type") or result.get("orderType") or ""),
+        time_in_force=str(result.get("time_in_force") or result.get("timeInForce") or ""),
+        status=str(result.get("status", "")),
+        placed_at=result.get("time_placed") or result.get("created_date") or result.get("timePlaced"),
+    )
+
+
+async def check_order_impact(
+    user_id: str,
+    user_secret: str,
+    account_id: str,
+    action: str,
+    symbol: str,
+    order_type: str = "MARKET",
+    time_in_force: str = "DAY",
+    units: float | None = None,
+    limit_price: float | None = None,
+    stop_price: float | None = None,
+    notional_value: float | None = None,
+) -> TradeImpact:
+    """Validate an order and return its estimated impact plus a trade_id to place it with."""
+    universal_symbol_id = await _resolve_universal_symbol_id(user_id, user_secret, account_id, symbol)
+    sdk_order_type = _ORDER_TYPE_SDK.get(order_type.upper())
+    sdk_tif = _TIME_IN_FORCE_SDK.get(time_in_force.upper())
+    if not sdk_order_type:
+        raise SnapTradeServiceError(f"Unsupported order type '{order_type}'")
+    if not sdk_tif:
+        raise SnapTradeServiceError(f"Unsupported time in force '{time_in_force}'")
+    result = _sdk_body(
+        await _call_snaptrade(
+            lambda: _sdk_client().trading.aget_order_impact(
+                account_id=account_id,
+                action=action.upper(),
+                universal_symbol_id=universal_symbol_id,
+                order_type=sdk_order_type,
+                time_in_force=sdk_tif,
+                user_id=user_id,
+                user_secret=user_secret,
+                price=limit_price,
+                stop=stop_price,
+                units=units,
+                notional_value=notional_value,
+                skip_deserialization=True,
+            )
+        )
+    )
+    impact = _parse_trade_impact(result if isinstance(result, dict) else {}, symbol)
+    if not impact.trade_id:
+        raise SnapTradeServiceError("SnapTrade did not return a trade id for this order")
+    return impact
+
+
+def _simulated_execution(
+    account_id: str,
+    symbol: str = "",
+    units: float | None = None,
+    action: str = "BUY",
+    order_type: str = "MARKET",
+    time_in_force: str = "DAY",
+) -> TradeExecution:
+    """A fake execution returned when TRADING_MODE is not 'live' (no real order is sent)."""
+    return TradeExecution(
+        brokerage_order_id="",
+        account_id=account_id,
+        symbol=symbol,
+        action=action,
+        units=units,
+        order_type=order_type,
+        time_in_force=time_in_force,
+        status="SIMULATED (test mode)",
+    )
+
+
+async def place_checked_order(
+    user_id: str, user_secret: str, account_id: str, trade_id: str
+) -> TradeExecution:
+    """Place an order previously validated via check_order_impact."""
+    if not TRADING_LIVE:
+        logger.info("TRADING_MODE != live; skipping real order placement for account %s", account_id)
+        return _simulated_execution(account_id)
+    result = _sdk_body(
+        await _call_snaptrade(
+            lambda: _sdk_client().trading.aplace_order(
+                trade_id=trade_id,
+                user_id=user_id,
+                user_secret=user_secret,
+                wait_to_confirm=True,
+                skip_deserialization=True,
+            )
+        )
+    )
+    return _parse_trade_execution(result if isinstance(result, dict) else {}, account_id, "")
+
+
+async def place_order(
+    user_id: str,
+    user_secret: str,
+    account_id: str,
+    action: str,
+    symbol: str,
+    order_type: str = "MARKET",
+    time_in_force: str = "DAY",
+    units: float | None = None,
+    limit_price: float | None = None,
+    stop_price: float | None = None,
+    notional_value: float | None = None,
+) -> TradeExecution:
+    """Check then place an order in one call (impact -> place)."""
+    if not TRADING_LIVE:
+        logger.info(
+            "TRADING_MODE != live; simulating %s %s x%s on account %s", action, symbol, units, account_id
+        )
+        return _simulated_execution(account_id, symbol=symbol, units=units, action=action.upper(), order_type=order_type, time_in_force=time_in_force)
+    impact = await check_order_impact(
+        user_id,
+        user_secret,
+        account_id,
+        action,
+        symbol,
+        order_type=order_type,
+        time_in_force=time_in_force,
+        units=units,
+        limit_price=limit_price,
+        stop_price=stop_price,
+        notional_value=notional_value,
+    )
+    execution = await place_checked_order(user_id, user_secret, account_id, impact.trade_id)
+    clear_user_cache(user_id)
+    if not execution.symbol:
+        execution.symbol = symbol
+    return execution
+
+
+async def cancel_order(
+    user_id: str, user_secret: str, account_id: str, brokerage_order_id: str
+) -> TradeExecution:
+    result = _sdk_body(
+        await _call_snaptrade(
+            lambda: _sdk_client().trading.acancel_user_account_order(
+                account_id=account_id,
+                user_id=user_id,
+                user_secret=user_secret,
+                brokerage_order_id=brokerage_order_id,
+                skip_deserialization=True,
+            )
+        )
+    )
+    clear_user_cache(user_id)
+    return _parse_trade_execution(result if isinstance(result, dict) else {}, account_id, "")

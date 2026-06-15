@@ -191,6 +191,7 @@ class TestFreshMigrations:
             "signin_otps", "password_reset_tokens", "plaid_items", "plaid_accounts",
             "cashflow_entries", "snaptrade_user_secrets", "snaptrade_account_preferences",
             "snaptrade_portfolio_balance_snapshots", "snaptrade_account_balance_snapshots", "alembic_version",
+            "real_estate_properties", "external_api_usage", "rentcast_listing_cache",
         }
         assert required <= tables
 
@@ -206,6 +207,7 @@ class TestFreshMigrations:
             ("plaid_items", "id"), ("plaid_items", "user_id"),
             ("plaid_accounts", "id"), ("plaid_accounts", "user_id"),
             ("cashflow_entries", "id"), ("cashflow_entries", "user_id"),
+            ("real_estate_properties", "id"), ("real_estate_properties", "user_id"),
         ]
         mismatches = []
         for table, col in checks:

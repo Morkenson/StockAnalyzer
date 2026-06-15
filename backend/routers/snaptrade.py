@@ -14,12 +14,16 @@ from models.snaptrade_models import (
     DividendFrequencyPreferenceUpdate,
     DividendPreferenceClearRequest,
     Portfolio,
+    RecurringBuyScheduleCreate,
+    RecurringBuyScheduleUpdate,
     RecurringInvestmentPreferenceUpdate,
+    TradeOrderRequest,
 )
 from routers.persistence import _current_user
 from services import account_preference_service as account_pref_svc
 from services import dividend_preference_service as dividend_pref_svc
 from services import portfolio_snapshot_service as portfolio_snapshot_svc
+from services import recurring_buy_service as recurring_buy_svc
 from services import recurring_preference_service as recurring_pref_svc
 from services import snaptrade_service as snaptrade_svc
 from services import user_service as user_svc
@@ -111,7 +115,11 @@ async def create_user(request: Request, current_user: AppUser | None = Depends(_
 
 
 @router.post("/connect/initiate")
-async def initiate_connection(request: Request, current_user: AppUser | None = Depends(_optional_current_user)):
+async def initiate_connection(
+    request: Request,
+    trade: bool = False,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
     try:
         user_id = _get_user_id(request, current_user)
         user_secret = await user_svc.get_user_secret(user_id)
@@ -122,7 +130,9 @@ async def initiate_connection(request: Request, current_user: AppUser | None = D
                 raise RuntimeError("SnapTrade did not return a user secret")
             await user_svc.store_user_secret(user_id, user_secret)
         redirect_uri = _portfolio_redirect_uri(request)
-        login_link = await snaptrade_svc.initiate_connection(user_id, user_secret, redirect_uri)
+        login_link = await snaptrade_svc.initiate_connection(
+            user_id, user_secret, redirect_uri, connection_type="trade" if trade else "read"
+        )
         if not login_link:
             return JSONResponse(
                 status_code=400,
@@ -581,6 +591,247 @@ async def get_account_holdings(
         return ApiResponse(success=True, data=holdings).model_dump(by_alias=True)
     except Exception as ex:
         logger.exception("Error fetching holdings")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+async def _trading_context(user_id: str, account_id: str) -> str:
+    """Assert the account belongs to the user and return the user secret."""
+    user_secret = await user_svc.get_user_secret(user_id)
+    if not user_secret:
+        raise HTTPException(status_code=404, detail="No SnapTrade connection found. Please connect your account first.")
+    accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
+    if account_id not in {acc.id for acc in accounts}:
+        raise HTTPException(status_code=403, detail="Account not found")
+    return user_secret
+
+
+@router.post("/accounts/{account_id}/orders/impact")
+async def check_order_impact(
+    account_id: str,
+    payload: TradeOrderRequest,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        user_secret = await _trading_context(user_id, account_id)
+        if not payload.action or not payload.symbol:
+            raise ValueError("action and symbol are required to check order impact")
+        impact = await snaptrade_svc.check_order_impact(
+            user_id,
+            user_secret,
+            account_id,
+            payload.action,
+            payload.symbol,
+            order_type=payload.order_type,
+            time_in_force=payload.time_in_force,
+            units=payload.units,
+            limit_price=payload.limit_price,
+            stop_price=payload.stop_price,
+            notional_value=payload.notional_value,
+        )
+        return ApiResponse(success=True, data=impact).model_dump(by_alias=True)
+    except snaptrade_svc.SnapTradeServiceError as ex:
+        return JSONResponse(
+            status_code=ex.status_code,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error checking order impact")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.post("/accounts/{account_id}/orders")
+async def place_order(
+    account_id: str,
+    payload: TradeOrderRequest,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        user_secret = await _trading_context(user_id, account_id)
+        if payload.trade_id:
+            execution = await snaptrade_svc.place_checked_order(
+                user_id, user_secret, account_id, payload.trade_id
+            )
+            snaptrade_svc.clear_user_cache(user_id)
+        else:
+            if not payload.action or not payload.symbol:
+                raise ValueError("action and symbol are required unless tradeId is provided")
+            execution = await snaptrade_svc.place_order(
+                user_id,
+                user_secret,
+                account_id,
+                payload.action,
+                payload.symbol,
+                order_type=payload.order_type,
+                time_in_force=payload.time_in_force,
+                units=payload.units,
+                limit_price=payload.limit_price,
+                stop_price=payload.stop_price,
+                notional_value=payload.notional_value,
+            )
+        return ApiResponse(success=True, data=execution, message="Order placed").model_dump(by_alias=True)
+    except snaptrade_svc.SnapTradeServiceError as ex:
+        return JSONResponse(
+            status_code=ex.status_code,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error placing order")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.delete("/accounts/{account_id}/orders/{brokerage_order_id}")
+async def cancel_order(
+    account_id: str,
+    brokerage_order_id: str,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        user_secret = await _trading_context(user_id, account_id)
+        execution = await snaptrade_svc.cancel_order(
+            user_id, user_secret, account_id, brokerage_order_id
+        )
+        return ApiResponse(success=True, data=execution, message="Order cancelled").model_dump(by_alias=True)
+    except snaptrade_svc.SnapTradeServiceError as ex:
+        return JSONResponse(
+            status_code=ex.status_code,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error cancelling order")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.get("/recurring-buys")
+async def list_recurring_buys(
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        schedules = await recurring_buy_svc.list_schedules(user_id)
+        return ApiResponse(success=True, data=schedules).model_dump(by_alias=True)
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error listing recurring buys")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.post("/recurring-buys")
+async def create_recurring_buy(
+    payload: RecurringBuyScheduleCreate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        await _assert_account_owned_by_user(user_id, payload.account_id)
+        schedule = await recurring_buy_svc.create_schedule(
+            user_id,
+            payload.account_id,
+            payload.symbol,
+            payload.frequency,
+            units=payload.units,
+            target_amount=payload.target_amount,
+            start_date=payload.start_date,
+        )
+        return ApiResponse(success=True, data=schedule, message="Recurring buy created").model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error creating recurring buy")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.patch("/recurring-buys/{schedule_id}")
+async def update_recurring_buy(
+    schedule_id: str,
+    payload: RecurringBuyScheduleUpdate,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        schedule = await recurring_buy_svc.update_schedule(
+            user_id,
+            schedule_id,
+            units=payload.units,
+            target_amount=payload.target_amount,
+            frequency=payload.frequency,
+            next_run_date=payload.next_run_date,
+            active=payload.active,
+        )
+        return ApiResponse(success=True, data=schedule).model_dump(by_alias=True)
+    except ValueError as ex:
+        status = 404 if "not found" in str(ex).lower() else 400
+        return JSONResponse(
+            status_code=status,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error updating recurring buy")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.delete("/recurring-buys/{schedule_id}")
+async def delete_recurring_buy(
+    schedule_id: str,
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    try:
+        user_id = _get_user_id(request, current_user)
+        result = await recurring_buy_svc.delete_schedule(user_id, schedule_id)
+        return ApiResponse(success=True, data=result, message="Recurring buy removed").model_dump(by_alias=True)
+    except ValueError as ex:
+        return JSONResponse(
+            status_code=404,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error deleting recurring buy")
         return JSONResponse(
             status_code=400,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),

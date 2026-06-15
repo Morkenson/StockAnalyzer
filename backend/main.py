@@ -28,6 +28,7 @@ REQUIRED_PROD_ENV_VARS = (
     "FRONTEND_ORIGINS",
     "SNAPTRADE_CALLBACK_REDIRECT",
     "DATABASE_URL",
+    "RESEND_API_KEY",
 )
 
 REQUIRED_PROD_ENV_VALUES = {
@@ -102,13 +103,16 @@ _validate_production_env()
 _log_optional_env_vars()
 
 from database import SessionLocal, init_db
-from routers import cashflow, persistence, plaid, stock, snaptrade
+from routers import cashflow, persistence, plaid, real_estate, stock, snaptrade, taxes
 from services import account_preference_service as account_pref_svc
 from services import portfolio_snapshot_service as portfolio_snapshot_svc
+from services import recurring_buy_service as recurring_buy_svc
 from services import snaptrade_service as snaptrade_svc
 from services import user_service as user_svc
 DB_KEEPALIVE_INTERVAL_SECONDS = 86400
 PORTFOLIO_SNAPSHOT_INTERVAL_SECONDS = 86400
+# Checked every 10 minutes so the 11:00 AM Central buy window is hit within ~10 min.
+RECURRING_BUY_INTERVAL_SECONDS = 600
 DEFAULT_FRONTEND_ORIGINS = [
     "http://localhost:4200",
     "https://localhost:4200",
@@ -146,6 +150,15 @@ async def portfolio_snapshot_loop() -> None:
         except Exception as exc:
             logger.warning("portfolio snapshot pass failed: %s", exc)
         await asyncio.sleep(PORTFOLIO_SNAPSHOT_INTERVAL_SECONDS)
+
+
+async def recurring_buy_loop() -> None:
+    while True:
+        try:
+            await recurring_buy_svc.run_due_schedules()
+        except Exception as exc:
+            logger.warning("recurring buy pass failed: %s", exc)
+        await asyncio.sleep(RECURRING_BUY_INTERVAL_SECONDS)
 
 
 async def snapshot_all_portfolios() -> None:
@@ -196,21 +209,24 @@ async def lifespan(app: FastAPI):
     init_db()
     keepalive_task = asyncio.create_task(database_keepalive_loop())
     snapshot_task = None
+    recurring_buy_task = None
     if (os.getenv("APP_ENV") or "").lower() != "test":
         snapshot_task = asyncio.create_task(portfolio_snapshot_loop())
+        recurring_buy_task = asyncio.create_task(recurring_buy_loop())
     try:
         yield
     finally:
         keepalive_task.cancel()
-        if snapshot_task:
-            snapshot_task.cancel()
+        background_tasks = [task for task in (snapshot_task, recurring_buy_task) if task]
+        for task in background_tasks:
+            task.cancel()
         try:
             await keepalive_task
         except asyncio.CancelledError:
             pass
-        if snapshot_task:
+        for task in background_tasks:
             try:
-                await snapshot_task
+                await task
             except asyncio.CancelledError:
                 pass
 
@@ -247,6 +263,8 @@ app.include_router(snaptrade.router, prefix="/api")
 app.include_router(persistence.router, prefix="/api")
 app.include_router(plaid.router, prefix="/api")
 app.include_router(cashflow.router, prefix="/api")
+app.include_router(real_estate.router, prefix="/api")
+app.include_router(taxes.router, prefix="/api")
 
 
 @app.get("/")

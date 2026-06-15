@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import List
+from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _to_camel(s: str) -> str:
@@ -25,6 +25,7 @@ class Brokerage(BaseModel):
     display_name: str | None = None
     description: str | None = None
     supports_oauth: bool = False
+    supports_trading: bool = False
 
 
 class Holding(BaseModel):
@@ -51,6 +52,7 @@ class Account(BaseModel):
     margin_balance: float | None = None
     margin_interest_rate: float | None = None
     currency: str = "USD"
+    supports_trading: bool = False
     holdings: List[Holding] = Field(default_factory=list)
 
 
@@ -145,6 +147,101 @@ class DividendIncomeSummary(BaseModel):
     payment_count: int = 0
     last_payment_date: str | None = None
     source: str = "average_historical_payout_current_holdings"
+
+
+OrderAction = Literal["BUY", "SELL"]
+OrderType = Literal["MARKET", "LIMIT", "STOP", "STOPLIMIT"]
+TimeInForce = Literal["DAY", "GTC", "FOK", "IOC"]
+
+
+class TradeOrderRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    action: OrderAction | None = None
+    symbol: str | None = None
+    units: float | None = None
+    order_type: OrderType = "MARKET"
+    time_in_force: TimeInForce = "DAY"
+    limit_price: float | None = None
+    stop_price: float | None = None
+    notional_value: float | None = None
+    # When provided, a previously checked order (from the impact endpoint) is placed directly.
+    trade_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_order_details_or_trade_id(self):
+        if self.trade_id:
+            return self
+        if not self.action or not self.symbol:
+            raise ValueError("action and symbol are required unless tradeId is provided")
+        return self
+
+
+class TradeImpact(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    trade_id: str = ""
+    symbol: str = ""
+    action: str = ""
+    units: float | None = None
+    price: float | None = None
+    order_type: str = ""
+    time_in_force: str = ""
+    estimated_commission: float | None = None
+    estimated_value: float | None = None
+    remaining_cash: float | None = None
+    currency: str = "USD"
+
+
+class TradeExecution(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    brokerage_order_id: str = ""
+    account_id: str = ""
+    symbol: str = ""
+    action: str = ""
+    units: float | None = None
+    price: float | None = None
+    order_type: str = ""
+    time_in_force: str = ""
+    status: str = ""
+    placed_at: str | None = None
+
+
+RecurringBuyFrequency = Literal["daily", "weekly", "biweekly", "monthly"]
+
+
+class RecurringBuyScheduleCreate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    account_id: str
+    symbol: str
+    # Provide exactly one of: units (fixed-share mode) or target_amount (dollar-cost mode).
+    units: float | None = None
+    target_amount: float | None = None
+    frequency: RecurringBuyFrequency
+    start_date: date | None = None
+
+
+class RecurringBuyScheduleUpdate(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    units: float | None = None
+    target_amount: float | None = None
+    frequency: RecurringBuyFrequency | None = None
+    next_run_date: date | None = None
+    active: bool | None = None
+
+
+class RecurringBuySchedule(BaseModel):
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    id: str = ""
+    account_id: str = ""
+    symbol: str = ""
+    units: float | None = None
+    target_amount: float | None = None
+    accumulated_budget: float = 0.0
+    frequency: str = ""
+    next_run_date: str | None = None
+    last_run_date: str | None = None
+    last_status: str | None = None
+    last_order_id: str | None = None
+    active: bool = True
 
 
 class AccountPreferenceUpdate(BaseModel):

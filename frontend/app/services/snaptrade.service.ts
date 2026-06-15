@@ -8,8 +8,10 @@ import {
   DividendIncomeSummary,
   Portfolio,
   PortfolioBalanceSnapshot,
+  RecurringBuySchedule,
   RecurringInvestment,
-  RecurringInvestmentPreference
+  RecurringInvestmentPreference,
+  TradeExecution
 } from '../models/snaptrade.model';
 
 interface ApiResponse<T> {
@@ -142,6 +144,109 @@ export class SnapTradeService {
         }),
         catchError(error => {
           console.error('Error clearing recurring investment changes:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  getRecurringBuys(): Observable<RecurringBuySchedule[]> {
+    return this.http.get<ApiResponse<RecurringBuySchedule[]>>(`${this.apiUrl}/recurring-buys`)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to load recurring buys');
+        }),
+        catchError(error => {
+          console.error('Error fetching recurring buys:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  createRecurringBuy(payload: {
+    accountId: string;
+    symbol: string;
+    units?: number;
+    targetAmount?: number;
+    frequency: string;
+    startDate?: string;
+  }): Observable<RecurringBuySchedule> {
+    return this.http.post<ApiResponse<RecurringBuySchedule>>(`${this.apiUrl}/recurring-buys`, payload)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to create recurring buy');
+        }),
+        catchError(error => {
+          console.error('Error creating recurring buy:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  updateRecurringBuy(scheduleId: string, payload: {
+    units?: number;
+    targetAmount?: number;
+    frequency?: string;
+    nextRunDate?: string;
+    active?: boolean;
+  }): Observable<RecurringBuySchedule> {
+    return this.http.patch<ApiResponse<RecurringBuySchedule>>(`${this.apiUrl}/recurring-buys/${encodeURIComponent(scheduleId)}`, payload)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to update recurring buy');
+        }),
+        catchError(error => {
+          console.error('Error updating recurring buy:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  deleteRecurringBuy(scheduleId: string): Observable<{ id: string; removed: number }> {
+    return this.http.delete<ApiResponse<{ id: string; removed: number }>>(`${this.apiUrl}/recurring-buys/${encodeURIComponent(scheduleId)}`)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to remove recurring buy');
+        }),
+        catchError(error => {
+          console.error('Error removing recurring buy:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  placeOrder(accountId: string, payload: {
+    action?: 'BUY' | 'SELL';
+    symbol?: string;
+    units?: number;
+    orderType?: string;
+    timeInForce?: string;
+    limitPrice?: number;
+    stopPrice?: number;
+    notionalValue?: number;
+    tradeId?: string;
+  }): Observable<TradeExecution> {
+    return this.http.post<ApiResponse<TradeExecution>>(`${this.apiUrl}/accounts/${encodeURIComponent(accountId)}/orders`, payload)
+      .pipe(
+        map(response => {
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.message || 'Failed to place order');
+        }),
+        catchError(error => {
+          console.error('Error placing order:', error);
           return throwError(() => error);
         })
       );
