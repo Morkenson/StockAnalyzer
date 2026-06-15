@@ -713,7 +713,7 @@ type PriceAppreciationHolding = {
             <div class="modal-body">
               <p class="recurring-buy-subtitle">
                 The app will place a market buy on
-                <strong>{{ account?.nickname || account?.name }}</strong>
+                <strong>{{ account.nickname || account.name }}</strong>
                 on this schedule.
               </p>
               <div class="recurring-buy-field recurring-buy-search">

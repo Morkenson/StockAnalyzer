@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("main")
 
 
 REQUIRED_PROD_ENV_VARS = (
@@ -58,6 +58,7 @@ OPTIONAL_ENV_VARS = (
 
 
 def _log_optional_env_vars() -> None:
+    logger.disabled = False
     unset = [name for name in OPTIONAL_ENV_VARS if not os.getenv(name)]
     if unset:
         logger.warning("env vars not set (features may be disabled or running with defaults): %s", ", ".join(unset))
