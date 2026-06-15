@@ -123,7 +123,7 @@ test.describe('Dashboard', () => {
   test('renders hero section with branding', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard');
     await expect(page.locator('.page-kicker')).toHaveText('Mork Wealth');
-    await expect(page.locator('h1')).toContainText('Investing, simplified.');
+    await expect(page.locator('.page-hero h1')).toContainText('Investing, simplified.');
   });
 
   test('shows Search Stocks and View Portfolio CTA buttons', async ({ authenticatedPage: page }) => {
@@ -155,9 +155,10 @@ test.describe('Dashboard', () => {
   test('shows information snapshots for the other app pages', async ({ authenticatedPage: page }) => {
     await page.goto('/dashboard');
     await expect(page.getByText('Financial Snapshots')).toBeVisible();
-    await expect(page.getByText('$125,000')).toBeVisible();
+    const portfolioSnapshot = page.locator('.page-snapshot').filter({ hasText: 'Connected investments' });
+    await expect(portfolioSnapshot.locator('.snapshot-value')).toHaveText('$125,000');
+    await expect(portfolioSnapshot.locator('.snapshot-stat', { hasText: 'Gain/Loss' })).toContainText('+$4,200');
     await expect(page.getByText('$120,000')).toBeVisible();
-    await expect(page.getByText('+$4,200')).toBeVisible();
     await expect(page.getByText('1 property')).toBeVisible();
     await expect(page.getByText('$352')).toBeVisible();
     await expect(page.getByText('Account controls')).toBeVisible();
@@ -176,6 +177,6 @@ test.describe('Dashboard API error states', () => {
     );
 
     await page.goto('/dashboard');
-    await expect(page.locator('h1')).toContainText('Investing, simplified.');
+    await expect(page.locator('.page-kicker')).toHaveText('Mork Wealth');
   });
 });
