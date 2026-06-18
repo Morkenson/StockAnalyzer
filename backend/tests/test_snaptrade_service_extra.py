@@ -36,16 +36,16 @@ def test_snaptrade_error_message_parses_generated_exception_body():
 
     exc = GeneratedException()
 
-    assert svc._snaptrade_error_message(exc) == "Feature is not enabled for this customer or this connection"
+    assert svc._snaptrade_error_message(exc) == "Feature is not enabled for this customer or this connection (SnapTrade code 1141)"
     assert svc._snaptrade_error_status(exc) == 403
+    assert svc._snaptrade_error_code(exc) == "1141"
 
 
 @pytest.mark.asyncio
 async def test_create_user_maps_response(monkeypatch):
     class Authentication:
-        async def aregister_snap_trade_user(self, body=None, skip_deserialization=None):
+        def register_snap_trade_user(self, body=None):
             assert body == {"userId": "user-1"}
-            assert skip_deserialization is False
             return FakeResponse(
                 {
                     "userId": "user-1",
@@ -91,7 +91,7 @@ async def test_get_brokerages_maps_response(monkeypatch):
 @pytest.mark.asyncio
 async def test_initiate_connection_returns_login_link(monkeypatch):
     class Authentication:
-        async def alogin_snap_trade_user(
+        def login_snap_trade_user(
             self,
             query_params=None,
             custom_redirect=None,
@@ -99,7 +99,6 @@ async def test_initiate_connection_returns_login_link(monkeypatch):
             show_close_button=None,
             connection_type=None,
             connection_portal_version=None,
-            skip_deserialization=None,
         ):
             assert query_params == {"userId": "u", "userSecret": "s"}
             assert custom_redirect == "https://app"
@@ -107,7 +106,6 @@ async def test_initiate_connection_returns_login_link(monkeypatch):
             assert show_close_button is False
             assert connection_type == "read"
             assert connection_portal_version == "v4"
-            assert skip_deserialization is True
             return FakeResponse({"redirectURI": "https://login.example"})
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"authentication": Authentication()})())
@@ -118,8 +116,7 @@ async def test_initiate_connection_returns_login_link(monkeypatch):
 @pytest.mark.asyncio
 async def test_initiate_connection_handles_raw_string_response(monkeypatch):
     class Authentication:
-        async def alogin_snap_trade_user(self, **kwargs):
-            assert kwargs["skip_deserialization"] is True
+        def login_snap_trade_user(self, **kwargs):
             return FakeResponse('"https://login.example/raw"')
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"authentication": Authentication()})())
@@ -130,16 +127,15 @@ async def test_initiate_connection_handles_raw_string_response(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_accounts_handles_wrapped_and_raw_lists(monkeypatch):
     class WrappedAccounts:
-        async def alist_user_accounts(self, query_params=None, skip_deserialization=None):
+        def list_user_accounts(self, query_params=None):
             assert query_params == {"userId": "u", "userSecret": "s"}
-            assert skip_deserialization is True
             return FakeResponse({"accounts": [{"id": "a1", "name": "Brokerage", "balance": 10}]})
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"account_information": WrappedAccounts()})())
     wrapped_accounts = await svc.get_accounts("u", "s")
 
     class RawAccounts:
-        async def alist_user_accounts(self, query_params=None, skip_deserialization=None):
+        def list_user_accounts(self, query_params=None):
             return FakeResponse([{"id": "a2", "name": "Other", "balance": 20}])
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"account_information": RawAccounts()})())
@@ -170,10 +166,9 @@ def test_parse_account_handles_current_snaptrade_shape():
 @pytest.mark.asyncio
 async def test_get_account_holdings_maps_positions(monkeypatch):
     class AccountInformation:
-        async def aget_user_holdings(self, account_id=None, query_params=None, skip_deserialization=None):
+        def get_user_holdings(self, account_id=None, query_params=None):
             assert account_id == "a1"
             assert query_params == {"userId": "u", "userSecret": "s"}
-            assert skip_deserialization is True
             return FakeResponse(
                 {
                     "positions": [
@@ -199,7 +194,7 @@ async def test_get_account_holdings_maps_positions(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_account_activities_uses_raw_buy_activity_response(monkeypatch):
     class AccountInformation:
-        async def aget_account_activities(
+        def get_account_activities(
             self,
             account_id=None,
             user_id=None,
@@ -208,7 +203,6 @@ async def test_get_account_activities_uses_raw_buy_activity_response(monkeypatch
             end_date=None,
             limit=None,
             type=None,
-            skip_deserialization=None,
         ):
             assert account_id == "a1"
             assert user_id == "u"
@@ -217,7 +211,6 @@ async def test_get_account_activities_uses_raw_buy_activity_response(monkeypatch
             assert end_date == date(2026, 2, 1)
             assert limit == 1000
             assert type == "BUY"
-            assert skip_deserialization is True
             return FakeResponse({"data": [{"type": "BUY", "amount": -25}]})
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: type("Client", (), {"account_information": AccountInformation()})())
@@ -789,12 +782,12 @@ async def test_check_order_impact_resolves_symbol_and_maps_enums(monkeypatch):
     captured = {}
 
     class ReferenceData:
-        async def asymbol_search_user_account(self, account_id=None, user_id=None, user_secret=None, substring=None, skip_deserialization=None):
+        def symbol_search_user_account(self, account_id=None, user_id=None, user_secret=None, substring=None):
             assert (account_id, user_id, user_secret, substring) == ("acc", "u", "s", "AAPL")
             return FakeResponse([{"id": "usym-1", "symbol": "AAPL"}])
 
     class Trading:
-        async def aget_order_impact(self, **kwargs):
+        def get_order_impact(self, **kwargs):
             captured.update(kwargs)
             return FakeResponse(
                 {
@@ -822,7 +815,7 @@ async def test_check_order_impact_resolves_symbol_and_maps_enums(monkeypatch):
 @pytest.mark.asyncio
 async def test_check_order_impact_rejects_unknown_symbol(monkeypatch):
     class ReferenceData:
-        async def asymbol_search_user_account(self, **kwargs):
+        def symbol_search_user_account(self, **kwargs):
             return FakeResponse([])
 
     monkeypatch.setattr(svc, "_sdk_client", lambda: _trading_client(ReferenceData(), object()))
@@ -835,7 +828,7 @@ async def test_check_order_impact_rejects_unknown_symbol(monkeypatch):
 @pytest.mark.asyncio
 async def test_place_checked_order_maps_execution(monkeypatch):
     class Trading:
-        async def aplace_order(self, trade_id=None, user_id=None, user_secret=None, wait_to_confirm=None, skip_deserialization=None):
+        def place_order(self, trade_id=None, user_id=None, user_secret=None, wait_to_confirm=None):
             assert (trade_id, user_id, user_secret, wait_to_confirm) == ("trade-1", "u", "s", True)
             return FakeResponse(
                 {"brokerage_order_id": "ord-9", "symbol": "AAPL", "action": "BUY", "status": "EXECUTED", "total_quantity": 2}
@@ -903,7 +896,7 @@ async def test_cancel_order_clears_cache(monkeypatch):
     cleared = []
 
     class Trading:
-        async def acancel_user_account_order(self, account_id=None, user_id=None, user_secret=None, brokerage_order_id=None, skip_deserialization=None):
+        def cancel_user_account_order(self, account_id=None, user_id=None, user_secret=None, brokerage_order_id=None):
             assert (account_id, brokerage_order_id) == ("acc", "ord-9")
             return FakeResponse({"brokerage_order_id": "ord-9", "status": "CANCELLED"})
 

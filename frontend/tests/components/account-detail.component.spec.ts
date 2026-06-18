@@ -233,6 +233,9 @@ describe('AccountDetailComponent', () => {
       snapshot: {
         paramMap: {
           get: jest.fn().mockReturnValue(accountId)
+        },
+        queryParamMap: {
+          get: jest.fn().mockReturnValue(null)
         }
       }
     };
