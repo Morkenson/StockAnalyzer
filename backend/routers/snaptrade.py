@@ -45,6 +45,23 @@ def _get_user_id(request: Request, current_user: AppUser | None) -> str:
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
+def _is_invalid_secret_error(ex: "snaptrade_svc.SnapTradeServiceError") -> bool:
+    """True when SnapTrade rejected the stored userId/userSecret (code 1083).
+
+    Happens after the SnapTrade client credentials change — secrets registered under
+    the previous client are no longer valid and the user must reconnect.
+    """
+    if getattr(ex, "code", None) == "1083":
+        return True
+    return "invalid userid or usersecret" in str(ex).lower()
+
+
+async def _forget_invalid_secret(user_id: str) -> None:
+    logger.warning("Clearing invalid SnapTrade secret for user %s; reconnect required", user_id)
+    await user_svc.delete_user_secret(user_id)
+    snaptrade_svc.clear_user_cache(user_id)
+
+
 def _auth_error_response(ex: HTTPException) -> JSONResponse:
     return JSONResponse(
         status_code=ex.status_code,
@@ -59,6 +76,27 @@ async def _assert_account_owned_by_user(user_id: str, account_id: str) -> None:
     accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
     if account_id not in {acc.id for acc in accounts}:
         raise HTTPException(status_code=403, detail="Account not found")
+
+
+async def _assert_account_trading_enabled(user_id: str, account_id: str) -> None:
+    """Reject if the connection can't place trades (read-only link / non-trade brokerage).
+
+    Without this, a schedule would be created but every run fails with
+    "User does not have permission to place orders".
+    """
+    user_secret = await user_svc.get_user_secret(user_id)
+    if not user_secret:
+        raise HTTPException(status_code=404, detail="No SnapTrade connection found. Please connect your account first.")
+    accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
+    account = next((acc for acc in accounts if acc.id == account_id), None)
+    if account is None:
+        raise HTTPException(status_code=403, detail="Account not found")
+    trading_map = await snaptrade_svc.get_account_trading_map(user_id, user_secret)
+    if not trading_map.get(account.brokerage_id, False):
+        raise HTTPException(
+            status_code=400,
+            detail="Trading isn't enabled for this connection. Reconnect the brokerage with trade permission to schedule buys.",
+        )
 
 
 def _portfolio_redirect_uri(request: Request) -> str:
@@ -130,8 +168,13 @@ async def initiate_connection(
                 raise RuntimeError("SnapTrade did not return a user secret")
             await user_svc.store_user_secret(user_id, user_secret)
         redirect_uri = _portfolio_redirect_uri(request)
+        connection_type = "trade" if trade else "read"
+        logger.info(
+            "initiating SnapTrade connection user=%s connection_type=%s redirect_uri=%s",
+            user_id, connection_type, redirect_uri,
+        )
         login_link = await snaptrade_svc.initiate_connection(
-            user_id, user_secret, redirect_uri, connection_type="trade" if trade else "read"
+            user_id, user_secret, redirect_uri, connection_type=connection_type
         )
         if not login_link:
             return JSONResponse(
@@ -174,6 +217,15 @@ async def get_portfolio(
         return ApiResponse(success=True, data=portfolio).model_dump(by_alias=True)
     except snaptrade_svc.SnapTradeServiceError as ex:
         logger.warning("SnapTrade portfolio request failed: %s", ex)
+        if _is_invalid_secret_error(ex):
+            await _forget_invalid_secret(user_id)
+            return JSONResponse(
+                status_code=404,
+                content=ApiResponse(
+                    success=False,
+                    message="Your brokerage connection is no longer valid (the SnapTrade account changed). Please reconnect.",
+                ).model_dump(by_alias=True),
+            )
         return JSONResponse(
             status_code=ex.status_code,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
@@ -202,6 +254,58 @@ async def get_portfolio_snapshots(
         return _auth_error_response(ex)
     except Exception as ex:
         logger.exception("Error fetching portfolio snapshots")
+        return JSONResponse(
+            status_code=400,
+            content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
+        )
+
+
+@router.get("/portfolio/value-history")
+async def get_portfolio_value_history(
+    request: Request,
+    current_user: AppUser | None = Depends(_optional_current_user),
+):
+    """Portfolio value history straight from the brokerage (SnapTrade Pro), computed in
+    memory. Read-only — this never touches our snapshot tables."""
+    try:
+        user_id = _get_user_id(request, current_user)
+        user_secret = await user_svc.get_user_secret(user_id)
+        if not user_secret:
+            raise HTTPException(status_code=404, detail="No SnapTrade connection found. Please connect your account first.")
+        accounts = await snaptrade_svc.get_accounts(user_id, user_secret)
+        account_histories = []
+        failures = []
+        for account in accounts:
+            try:
+                points = await snaptrade_svc.get_account_balance_history(user_id, user_secret, account.id)
+            except snaptrade_svc.SnapTradeServiceError as ex:
+                logger.warning("balance history failed for account %s: %s", account.id, ex)
+                failures.append(str(ex))
+                continue
+            if points:
+                account_histories.append({
+                    "account_id": account.id,
+                    "account_name": account.nickname or account.name,
+                    "currency": account.currency or "USD",
+                    "points": points,
+                })
+        history = portfolio_snapshot_svc.build_value_history(account_histories)
+        message = None
+        if not history and failures:
+            message = "Your plan may not include balance history: " + "; ".join(sorted(set(failures)))
+        return ApiResponse(success=True, data=history, message=message).model_dump(by_alias=True)
+    except snaptrade_svc.SnapTradeServiceError as ex:
+        if _is_invalid_secret_error(ex):
+            await _forget_invalid_secret(user_id)
+            return JSONResponse(
+                status_code=404,
+                content=ApiResponse(success=False, message="Your brokerage connection is no longer valid. Please reconnect.").model_dump(by_alias=True),
+            )
+        return JSONResponse(status_code=ex.status_code, content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True))
+    except HTTPException as ex:
+        return _auth_error_response(ex)
+    except Exception as ex:
+        logger.exception("Error fetching portfolio value history")
         return JSONResponse(
             status_code=400,
             content=ApiResponse(success=False, message=str(ex)).model_dump(by_alias=True),
@@ -752,7 +856,7 @@ async def create_recurring_buy(
 ):
     try:
         user_id = _get_user_id(request, current_user)
-        await _assert_account_owned_by_user(user_id, payload.account_id)
+        await _assert_account_trading_enabled(user_id, payload.account_id)
         schedule = await recurring_buy_svc.create_schedule(
             user_id,
             payload.account_id,

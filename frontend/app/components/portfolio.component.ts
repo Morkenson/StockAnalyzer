@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { forkJoin } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { SnapTradeService } from '../services/snaptrade.service';
 import { Portfolio, Account, DividendIncomeAccount, DividendIncomeSummary, Holding, RecurringInvestment } from '../models/snaptrade.model';
 import { Router } from '@angular/router';
@@ -125,8 +126,30 @@ type AccountCompanyGroup = BrokerageBrand & {
                 <span>({{ chartChangePercent >= 0 ? '+' : '' }}{{ chartChangePercent | number:'1.2-2' }}%)</span>
               </strong>
             </div>
-            <span class="chart-range-label">{{ selectedRange.label }}</span>
+            <div class="chart-topline-actions">
+              <span class="chart-range-label">{{ selectedRange.label }}</span>
+              <div class="chart-source-toggle" role="group" aria-label="Balance history source">
+                <button
+                  type="button"
+                  class="chart-source-option"
+                  [class.active]="historySource === 'snapshots'"
+                  [disabled]="balanceHistoryLoading"
+                  (click)="setHistorySource('snapshots')">
+                  Saved
+                </button>
+                <button
+                  type="button"
+                  class="chart-source-option"
+                  [class.active]="historySource === 'brokerage'"
+                  [disabled]="balanceHistoryLoading"
+                  title="Live history from your brokerage (SnapTrade Pro). Not saved."
+                  (click)="setHistorySource('brokerage')">
+                  Brokerage
+                </button>
+              </div>
+            </div>
           </div>
+          <p class="chart-backfill-note" *ngIf="historyMessage">{{ historyMessage }}</p>
           <app-stock-chart
             [historicalData]="balanceHistory"
             valueLabel="Balance"
@@ -452,6 +475,21 @@ export class PortfolioComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // SnapTrade redirects back here after the connect/trade flow. If we stashed the
+    // account page the user started from, send them back there to see the result.
+    const tradeReturn = sessionStorage.getItem('snaptradeTradeReturn');
+    if (tradeReturn) {
+      sessionStorage.removeItem('snaptradeTradeReturn');
+      try {
+        const { path } = JSON.parse(tradeReturn) as { path?: string };
+        if (path && path.startsWith('/portfolio/')) {
+          this.router.navigateByUrl(`${path}${path.includes('?') ? '&' : '?'}tradeConnectReturn=1`);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to parse SnapTrade trade-return state:', err, tradeReturn);
+      }
+    }
     this.loadPortfolio();
   }
 
@@ -552,6 +590,20 @@ export class PortfolioComponent implements OnInit {
     this.updateChartChange();
   }
 
+  // 'snapshots' = our saved daily snapshots (DB). 'brokerage' = live history from
+  // SnapTrade Pro, computed in memory (not saved). Just changes what the chart reads.
+  historySource: 'snapshots' | 'brokerage' = 'snapshots';
+  historyMessage: string | null = null;
+
+  setHistorySource(source: 'snapshots' | 'brokerage'): void {
+    if (this.historySource === source) {
+      return;
+    }
+    this.historySource = source;
+    this.historyMessage = null;
+    this.loadBalanceHistory();
+  }
+
   loadBalanceHistory(): void {
     if (!this.portfolio || !this.portfolio.accounts || this.portfolio.accounts.length === 0) {
       this.balanceHistory = [];
@@ -560,9 +612,14 @@ export class PortfolioComponent implements OnInit {
     }
 
     this.balanceHistoryLoading = true;
-    this.snapTradeService.getPortfolioSnapshots().subscribe({
-      next: (snapshots) => {
-        this.allBalanceHistory = snapshots
+    const source$ = this.historySource === 'brokerage'
+      ? this.snapTradeService.getPortfolioValueHistory()
+      : this.snapTradeService.getPortfolioSnapshots().pipe(map(history => ({ history, message: null })));
+
+    source$.subscribe({
+      next: ({ history, message }) => {
+        this.historyMessage = message;
+        this.allBalanceHistory = history
           .map(snapshot => ({
             date: new Date(`${snapshot.snapshotDate}T00:00:00`),
             open: snapshot.totalBalance,
@@ -577,8 +634,12 @@ export class PortfolioComponent implements OnInit {
         this.balanceHistoryLoading = false;
       },
       error: (err) => {
-        console.error('Failed to load portfolio snapshots:', err);
+        console.error('Failed to load balance history:', err);
+        this.historyMessage = this.historySource === 'brokerage'
+          ? (err.error?.message || err.message || 'Could not load history from your brokerage.')
+          : null;
         this.balanceHistory = [];
+        this.allBalanceHistory = [];
         this.updateChartChange();
         this.balanceHistoryLoading = false;
       }

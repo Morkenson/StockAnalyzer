@@ -1,4 +1,5 @@
 """Daily portfolio balance snapshots."""
+import bisect
 from datetime import date
 
 from sqlalchemy import select
@@ -32,6 +33,56 @@ def save_daily_snapshot(db: Session, user_id: str, portfolio: Portfolio, snapsho
     db.commit()
     db.refresh(row)
     return _snapshot_row(row)
+
+
+def build_value_history(account_histories: list[dict]) -> list[PortfolioBalanceSnapshot]:
+    """Build portfolio value history from brokerage data, IN MEMORY — no DB writes.
+
+    ``account_histories`` is a list of
+    ``{"account_id", "account_name", "currency", "points": [{"date", "total_value"}]}``
+    (from SnapTrade's balance-history endpoint). The portfolio total for each date is the
+    sum across accounts of each account's most recent value on/before that date
+    (forward-fill), so accounts with sparser history still total correctly. Returns
+    ascending-by-date ``PortfolioBalanceSnapshot`` points (gain/loss is 0 — the brokerage
+    endpoint only reports value).
+    """
+    series: list[dict] = []
+    all_dates: set[date] = set()
+    for entry in account_histories:
+        points = sorted(
+            ((p["date"], float(p["total_value"])) for p in entry.get("points", []) if p.get("date")),
+            key=lambda x: x[0],
+        )
+        if not points:
+            continue
+        series.append({**entry, "points": points, "dates": [p[0] for p in points]})
+        all_dates.update(d for d, _ in points)
+
+    if not all_dates:
+        return []
+
+    currency = next((e.get("currency") for e in series if e.get("currency")), "USD")
+    history: list[PortfolioBalanceSnapshot] = []
+    for d in sorted(all_dates):
+        total = 0.0
+        account_count = 0
+        for entry in series:
+            idx = bisect.bisect_right(entry["dates"], d) - 1  # latest point on/before d
+            if idx < 0:
+                continue  # account had no value yet on this date
+            total += entry["points"][idx][1]
+            account_count += 1
+        history.append(
+            PortfolioBalanceSnapshot(
+                snapshot_date=d,
+                total_balance=total,
+                total_gain_loss=0,
+                total_gain_loss_percent=0,
+                account_count=account_count,
+                currency=currency,
+            )
+        )
+    return history
 
 
 def get_snapshots(db: Session, user_id: str) -> list[PortfolioBalanceSnapshot]:

@@ -35,9 +35,10 @@ _dividend_income_cache: dict[tuple[str, tuple[str, ...], int], tuple[float, Divi
 
 
 class SnapTradeServiceError(RuntimeError):
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, code: str | None = None):
         super().__init__(message)
         self.status_code = status_code
+        self.code = code  # SnapTrade error code, e.g. "1083" (invalid userID/userSecret)
 
 
 def clear_user_cache(user_id: str) -> None:
@@ -98,13 +99,18 @@ def _sdk_body(response):
 def _snaptrade_error_message(exc: Exception) -> str:
     api_response = getattr(exc, "api_response", None)
     body = _snaptrade_error_body(exc)
+    code = body.get("code") if isinstance(body, Mapping) else None
+
+    def _with_code(message: str) -> str:
+        return f"{message} (SnapTrade code {code})" if code else message
+
     if isinstance(body, Mapping):
         for key in ("message", "detail", "error", "status"):
             if body.get(key):
-                return str(body[key])
+                return _with_code(str(body[key]))
         errors = body.get("errors")
         if isinstance(errors, list) and errors:
-            return "; ".join(str(error) for error in errors)
+            return _with_code("; ".join(str(error) for error in errors))
     if isinstance(body, str) and body:
         return body
     status = getattr(api_response, "status", None)
@@ -125,6 +131,13 @@ def _snaptrade_error_status(exc: Exception) -> int:
             pass
     api_response = getattr(exc, "api_response", None)
     return getattr(api_response, "status", 400) or 400
+
+
+def _snaptrade_error_code(exc: Exception) -> str | None:
+    body = _snaptrade_error_body(exc)
+    if isinstance(body, Mapping) and body.get("code") is not None:
+        return str(body["code"])
+    return None
 
 
 def _snaptrade_error_body(exc: Exception):
@@ -167,7 +180,9 @@ async def _call_snaptrade(operation):
         status = _snaptrade_error_status(exc)
         body = _snaptrade_error_body(exc)
         logger.warning("SnapTrade API exception status=%s body=%s", status, _redacted(body))
-        raise SnapTradeServiceError(_snaptrade_error_message(exc), status_code=status) from exc
+        raise SnapTradeServiceError(
+            _snaptrade_error_message(exc), status_code=status, code=_snaptrade_error_code(exc)
+        ) from exc
 
 
 async def _call_snaptrade_sync(operation):
@@ -185,15 +200,16 @@ async def _call_snaptrade_sync(operation):
         status = _snaptrade_error_status(exc)
         body = _snaptrade_error_body(exc)
         logger.warning("SnapTrade API exception status=%s body=%s", status, _redacted(body))
-        raise SnapTradeServiceError(_snaptrade_error_message(exc), status_code=status) from exc
+        raise SnapTradeServiceError(
+            _snaptrade_error_message(exc), status_code=status, code=_snaptrade_error_code(exc)
+        ) from exc
 
 
 async def create_user(user_id: str) -> SnapTradeUser:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().authentication.aregister_snap_trade_user(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().authentication.register_snap_trade_user(
                 body={"userId": user_id},
-                skip_deserialization=False,
             )
         )
     )
@@ -231,15 +247,14 @@ async def initiate_connection(
     user_id: str, user_secret: str, redirect_uri: str, connection_type: str = "read"
 ) -> str:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().authentication.alogin_snap_trade_user(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().authentication.login_snap_trade_user(
                 query_params={"userId": user_id, "userSecret": user_secret},
                 custom_redirect=redirect_uri,
                 immediate_redirect=True,
                 show_close_button=False,
                 connection_type=connection_type,
                 connection_portal_version="v4",
-                skip_deserialization=True,
             )
         )
     )
@@ -710,10 +725,9 @@ def _summarize_dividend_income(
 
 async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().account_information.alist_user_accounts(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().account_information.list_user_accounts(
                 query_params={"userId": user_id, "userSecret": user_secret},
-                skip_deserialization=True,
             )
         )
     )
@@ -730,13 +744,18 @@ async def get_accounts(user_id: str, user_secret: str) -> list[Account]:
 
 
 async def get_account_trading_map(user_id: str, user_secret: str) -> dict[str, bool]:
-    """Map each brokerage authorization id to whether its brokerage allows trading."""
+    """Map each brokerage authorization id to whether the app can place trades on it.
+
+    Trading needs both: the brokerage supports trading (allows_trading) *and* this
+    specific connection was authorized for trading (type == "trade") and is enabled.
+    A read-only connection to a trade-capable brokerage (e.g. Webull) still rejects
+    orders with "User does not have permission to place orders".
+    """
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().connections.alist_brokerage_authorizations(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().connections.list_brokerage_authorizations(
                 user_id=user_id,
                 user_secret=user_secret,
-                skip_deserialization=True,
             )
         )
     )
@@ -750,7 +769,19 @@ async def get_account_trading_map(user_id: str, user_secret: str) -> dict[str, b
             continue
         brokerage = auth.get("brokerage") if isinstance(auth.get("brokerage"), dict) else {}
         allows_trading = bool(brokerage.get("allows_trading", brokerage.get("allowsTrading", False)))
-        trading_map[auth_id] = allows_trading
+        conn_type = str(auth.get("type", "")).strip().lower()
+        disabled = bool(auth.get("disabled", False))
+        trade_enabled = allows_trading and conn_type == "trade" and not disabled
+        trading_map[auth_id] = trade_enabled
+        logger.info(
+            "brokerage authorization %s (%s): type=%s disabled=%s allows_trading=%s -> trade_enabled=%s",
+            auth_id,
+            brokerage.get("name") or brokerage.get("slug") or "?",
+            conn_type or "?",
+            disabled,
+            allows_trading,
+            trade_enabled,
+        )
     return trading_map
 
 
@@ -758,11 +789,10 @@ async def get_account_holdings(
     user_id: str, user_secret: str, account_id: str
 ) -> list[Holding]:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().account_information.aget_user_holdings(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().account_information.get_user_holdings(
                 account_id=account_id,
                 query_params={"userId": user_id, "userSecret": user_secret},
-                skip_deserialization=True,
             )
         )
     )
@@ -771,6 +801,44 @@ async def get_account_holdings(
     for elem in raw_holdings:
         holdings.append(_parse_holding(elem))
     return holdings
+
+
+async def get_account_balance_history(
+    user_id: str, user_secret: str, account_id: str
+) -> list[dict]:
+    """Historical estimated total value of an account, as reported by the brokerage.
+
+    Returns ascending-by-date points: ``[{"date": date, "total_value": float}, ...]``.
+    SnapTrade Pro feature; a 403 means it isn't enabled on the plan.
+    """
+    result = _sdk_body(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().account_information.get_account_balance_history(
+                account_id=account_id,
+                user_id=user_id,
+                user_secret=user_secret,
+            )
+        )
+    )
+    raw = result.get("history", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
+    points: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        raw_date = item.get("date")
+        if not raw_date:
+            continue
+        try:
+            point_date = raw_date if isinstance(raw_date, date) else date.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            continue
+        try:
+            total_value = float(item.get("total_value") or item.get("totalValue") or 0)
+        except (TypeError, ValueError):
+            continue
+        points.append({"date": point_date, "total_value": total_value})
+    points.sort(key=lambda p: p["date"])
+    return points
 
 
 async def get_account_activities(
@@ -782,8 +850,8 @@ async def get_account_activities(
     activity_type: str = "BUY",
 ) -> list[dict]:
     result = _sdk_body(
-        await _call_snaptrade(
-            lambda: _sdk_client().account_information.aget_account_activities(
+        await _call_snaptrade_sync(
+            lambda: _sdk_client().account_information.get_account_activities(
                 account_id=account_id,
                 user_id=user_id,
                 user_secret=user_secret,
@@ -791,7 +859,6 @@ async def get_account_activities(
                 end_date=end_date,
                 limit=1000,
                 type=activity_type,
-                skip_deserialization=True,
             )
         )
     )

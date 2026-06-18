@@ -115,7 +115,8 @@ test.describe('Account Detail', () => {
     await page.locator('.recurring-card-header').click();
     await expect(page.locator('#account-recurring-section')).toBeVisible();
     await expect(page.getByRole('button', { name: /Set up recurring buy/ })).toHaveCount(0);
-    await expect(page.getByText("doesn't support placing trades")).toBeVisible();
+    await expect(page.getByText('This connection is read-only')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enable trading' })).toBeVisible();
   });
 });
 

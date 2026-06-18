@@ -475,11 +475,17 @@ type PriceAppreciationHolding = {
           </div>
           <div id="account-recurring-section" class="account-section-body" *ngIf="isSectionExpanded('recurring')">
             <div class="recurring-buy-manager">
+              <div class="trade-connect-banner" [class.success]="tradeConnectStatus === 'success'" [class.failure]="tradeConnectStatus === 'failure'" *ngIf="tradeConnectStatus" role="status">
+                <span class="trade-connect-banner-icon" aria-hidden="true">{{ tradeConnectStatus === 'success' ? '✓' : '✕' }}</span>
+                <span class="trade-connect-banner-text">{{ tradeConnectMessage }}</span>
+                <button class="trade-connect-banner-close" type="button" aria-label="Dismiss" (click)="dismissTradeConnectBanner()">&times;</button>
+              </div>
               <div class="recurring-buy-manager-header">
                 <div>
                   <strong>Scheduled by this app</strong>
                   <p *ngIf="accountSupportsTrading">Automatically place a recurring buy even if your brokerage doesn't offer it.</p>
-                  <p *ngIf="!accountSupportsTrading">This brokerage doesn't support placing trades through the app.</p>
+                  <p *ngIf="!accountSupportsTrading">This connection is read-only. If your brokerage supports trading, reconnect with trade permission to place buys through the app.</p>
+                  <p class="error-message compact" *ngIf="enableTradingError">{{ enableTradingError }}</p>
                 </div>
                 <button
                   *ngIf="accountSupportsTrading"
@@ -487,6 +493,14 @@ type PriceAppreciationHolding = {
                   type="button"
                   (click)="openRecurringBuyModal(); $event.stopPropagation()">
                   + Set up recurring buy
+                </button>
+                <button
+                  *ngIf="!accountSupportsTrading"
+                  class="btn btn-secondary btn-sm"
+                  type="button"
+                  [disabled]="enablingTrading"
+                  (click)="enableTrading(); $event.stopPropagation()">
+                  {{ enablingTrading ? 'Starting…' : 'Enable trading' }}
                 </button>
               </div>
               <div class="error-message compact" *ngIf="recurringBuysError">
@@ -519,8 +533,8 @@ type PriceAppreciationHolding = {
                         <td>{{ titleCase(schedule.frequency) }}</td>
                         <td>{{ schedule.nextRunDate || '—' }}</td>
                         <td>{{ schedule.lastRunDate || 'Never' }}</td>
-                        <td>
-                          {{ schedule.active ? (schedule.lastStatus || 'Scheduled') : 'Paused' }}
+                        <td class="schedule-status-cell">
+                          <span class="schedule-status-text" [title]="schedule.active ? (schedule.lastStatus || 'Scheduled') : 'Paused'">{{ schedule.active ? (schedule.lastStatus || 'Scheduled') : 'Paused' }}</span>
                           <span class="test-buy-inline" *ngIf="testBuyRowResult[schedule.id]">One-off buy: {{ testBuyRowResult[schedule.id] }}</span>
                         </td>
                       </ng-container>
@@ -620,6 +634,7 @@ type PriceAppreciationHolding = {
                     <th>Symbol</th>
                     <th>Frequency</th>
                     <th>Amount</th>
+                    <th>Weekly</th>
                     <th>Monthly</th>
                     <th>Yearly</th>
                     <th>Allocation</th>
@@ -648,11 +663,12 @@ type PriceAppreciationHolding = {
                     </td>
                     <td *ngIf="recurringEditingIndex !== i">{{ titleCase(investment.frequency) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(investment.amount) }}</td>
+                    <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringWeeklyAmount(investment)) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringMonthlyAmount(investment)) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ formatMoney(getRecurringYearlyAmount(investment)) }}</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ getRecurringCurrentAllocation(investment) | number:'1.2-2' }}%</td>
                     <td *ngIf="recurringEditingIndex !== i">{{ getRecurringFutureAllocation(investment) | number:'1.2-2' }}%</td>
-                    <td *ngIf="recurringEditingIndex === i" colspan="6">
+                    <td *ngIf="recurringEditingIndex === i" colspan="7">
                       <div class="recurring-edit-form">
                         <select [(ngModel)]="recurringEditDraft.frequency" aria-label="Recurring buy frequency">
                           <option *ngFor="let option of recurringFrequencyOptions" [value]="option.value">{{ option.label }}</option>
@@ -1126,7 +1142,10 @@ export class AccountDetailComponent implements OnInit, OnDestroy {
       this.stockSearchResults = results;
       this.stockSearchLoading = false;
     });
-    this.loadAccount();
+    // Returning from the SnapTrade trade-connect flow: force a refresh so we read the
+    // freshly-updated connection, then show success/failure once the account loads.
+    this.pendingTradeConnectCheck = this.route.snapshot.queryParamMap.get('tradeConnectReturn') === '1';
+    this.loadAccount(this.pendingTradeConnectCheck);
   }
 
   ngOnDestroy(): void {
@@ -1153,6 +1172,7 @@ export class AccountDetailComponent implements OnInit, OnDestroy {
           this.loadDividendIncome(refresh);
           this.loadPriceAppreciationCagr(refresh);
         }
+        this.evaluateTradeConnectReturn();
       },
       error: (err) => {
         if (err.status === 404) {
@@ -1193,6 +1213,76 @@ export class AccountDetailComponent implements OnInit, OnDestroy {
 
   get accountSupportsTrading(): boolean {
     return !!this.account?.supportsTrading;
+  }
+
+  enableTradingError: string | null = null;
+  enablingTrading = false;
+
+  // Reconnect the brokerage with trade permission. A read-only connection (the default
+  // SnapTrade link) rejects orders with "User does not have permission to place orders",
+  // so this re-runs the connection portal requesting a trade-enabled authorization.
+  enableTrading(): void {
+    this.enablingTrading = true;
+    this.enableTradingError = null;
+    // Remember which account page we're on so we land back here after the SnapTrade flow.
+    sessionStorage.setItem(
+      'snaptradeTradeReturn',
+      JSON.stringify({ path: this.router.url.split('?')[0], accountId: this.account?.id })
+    );
+    this.snapTradeService.initiateConnection(true).subscribe({
+      next: (connectionResponse) => {
+        if (connectionResponse.redirectUri) {
+          window.location.href = connectionResponse.redirectUri;
+          return;
+        }
+        this.enablingTrading = false;
+        this.enableTradingError = 'Could not start the trading connection. Please try again.';
+        console.error('SnapTrade trade-connect returned no redirect URI');
+      },
+      error: (err) => {
+        this.enablingTrading = false;
+        this.enableTradingError = err.error?.message || err.message || 'Could not start the trading connection.';
+        console.error('Error starting SnapTrade trade connection:', err);
+      }
+    });
+  }
+
+  // Outcome banner shown after returning from the SnapTrade trade-connect flow.
+  tradeConnectStatus: 'success' | 'failure' | null = null;
+  tradeConnectMessage: string | null = null;
+  private pendingTradeConnectCheck = false;
+
+  private evaluateTradeConnectReturn(): void {
+    if (!this.pendingTradeConnectCheck) {
+      return;
+    }
+    this.pendingTradeConnectCheck = false;
+    if (this.account?.supportsTrading) {
+      this.tradeConnectStatus = 'success';
+      this.tradeConnectMessage = 'Trading is now enabled on this connection. You can schedule recurring buys.';
+      console.info('SnapTrade trade-connect success for account', this.account?.id);
+    } else {
+      this.tradeConnectStatus = 'failure';
+      this.tradeConnectMessage =
+        'This connection is still read-only — trading was not enabled. Your brokerage may not support trading through SnapTrade, or trade permission was not granted. Try again, or check the brokerage.';
+      console.error('SnapTrade trade-connect failed; account still read-only', {
+        accountId: this.account?.id,
+        brokerageId: this.account?.brokerageId,
+        supportsTrading: this.account?.supportsTrading,
+      });
+    }
+    // Strip the marker so a refresh doesn't re-trigger the banner.
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tradeConnectReturn: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  dismissTradeConnectBanner(): void {
+    this.tradeConnectStatus = null;
+    this.tradeConnectMessage = null;
   }
 
   get scheduledRecurringBuys(): RecurringBuySchedule[] {
@@ -2387,6 +2477,10 @@ export class AccountDetailComponent implements OnInit, OnDestroy {
 
   getRecurringMonthlyTotal(): number {
     return this.getRecurringYearlyTotal() / 12;
+  }
+
+  getRecurringWeeklyAmount(investment: RecurringInvestment): number {
+    return this.getRecurringYearlyAmount(investment) / 52;
   }
 
   getRecurringMonthlyAmount(investment: RecurringInvestment): number {

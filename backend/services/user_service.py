@@ -83,3 +83,20 @@ async def store_user_secret(user_id: str, user_secret: str) -> None:
             db.commit()
             return
     _user_secrets[user_id] = user_secret
+
+
+async def delete_user_secret(user_id: str) -> None:
+    """Forget a stored SnapTrade user secret.
+
+    Needed when the secret becomes invalid — e.g. after switching SnapTrade client
+    credentials, where secrets registered under the old client return code 1083.
+    Clearing it lets the next connect re-register a fresh user under the new client.
+    """
+    if _use_database:
+        with SessionLocal() as db:
+            row = db.get(SnapTradeUserSecret, user_id)
+            if row:
+                db.delete(row)
+                db.commit()
+            return
+    _user_secrets.pop(user_id, None)

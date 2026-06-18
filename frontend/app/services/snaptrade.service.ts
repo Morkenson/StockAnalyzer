@@ -33,8 +33,9 @@ export class SnapTradeService {
    * Initiate brokerage connection
    * Returns redirect URI for OAuth flow
    */
-  initiateConnection(): Observable<{ redirectUri: string }> {
-    return this.http.post<ApiResponse<{ redirectUri: string }>>(`${this.apiUrl}/connect/initiate`, {})
+  initiateConnection(trade = false): Observable<{ redirectUri: string }> {
+    const url = trade ? `${this.apiUrl}/connect/initiate?trade=true` : `${this.apiUrl}/connect/initiate`;
+    return this.http.post<ApiResponse<{ redirectUri: string }>>(url, {})
       .pipe(
         map(response => {
           if (response.success && response.data) {
@@ -263,6 +264,24 @@ export class SnapTradeService {
         }),
         catchError(error => {
           console.error('Error fetching portfolio snapshots:', error);
+          return throwError(() => error);
+        })
+      );
+  }
+
+  // Portfolio value history straight from the brokerage (SnapTrade Pro). Read-only —
+  // computed in memory on the backend, never persisted to our snapshots.
+  getPortfolioValueHistory(): Observable<{ history: PortfolioBalanceSnapshot[]; message: string | null }> {
+    return this.http.get<ApiResponse<PortfolioBalanceSnapshot[]>>(`${this.apiUrl}/portfolio/value-history`)
+      .pipe(
+        map(response => {
+          if (response.success) {
+            return { history: response.data ?? [], message: response.message ?? null };
+          }
+          throw new Error(response.message || 'Failed to load brokerage value history');
+        }),
+        catchError(error => {
+          console.error('Error fetching portfolio value history:', error);
           return throwError(() => error);
         })
       );
